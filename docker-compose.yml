@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: habit_tracker_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Монтируем директорию для базы данных (персистентное хранилище)
+      - ./data:/app/data
+      # Опционально: монтируем логи
+      - ./logs:/app/logs
+    environment:
+      # Путь к базе данных внутри контейнера
+      - DATABASE_URL=sqlite+aiosqlite:///./data/data.db
+      # Python unbuffered для логов в реальном времени
+      - PYTHONUNBUFFERED=1
+    networks:
+      - bot_network
+
+networks:
+  bot_network:
+    driver: bridge
