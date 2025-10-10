@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+bot.log
+
+# Environment variables
+.env
+
+# IDE
+.idea/dataSources.xml
+.idea/misc.xml
+.vscode/
+
+# UV lock file (можно убрать, если хочешь коммитить)
+uv.lock
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Project specific
+data.db
+new_life.db
+habits.db
+src/data.db
+src/bot.log
+bot.log
+
+# Test files (если не хочешь коммитить)
+tests/__pycache__/
