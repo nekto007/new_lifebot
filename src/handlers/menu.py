@@ -501,7 +501,7 @@ async def menu_show_help(callback: CallbackQuery):
         "/addtask - Добавить задачу\n"
         "/tasks - Список задач\n\n"
         "<b>Делегирование:</b>\n"
-        "/trust <user_id> - Добавить в доверенные\n"
+        "/trust &lt;user_id&gt; - Добавить в доверенные\n"
         "/delegate - Делегировать задачу\n"
         "/delegated - Мои делегированные\n"
         "/assigned - Назначено мне\n\n"
