@@ -509,7 +509,6 @@ async def menu_show_help(callback: CallbackQuery):
         "/stats - Статистика\n"
         "/journal - Журнал\n"
         "/settings - Настройки\n\n"
-        "Если нужна помощь - пиши @support"
     )
 
     await callback.message.edit_text(help_text, reply_markup=builder.as_markup())
