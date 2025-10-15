@@ -37,10 +37,15 @@ async def cmd_menu(message: Message):
     builder.button(text="Сегодня 📅", callback_data="show_today")
     builder.button(text="Статистика 📊", callback_data="show_stats")
 
-    # Пятый ряд - настройки
-    builder.button(text="Настройки ⚙️", callback_data="show_settings")
+    # Пятый ряд - дополнительно
+    builder.button(text="Журнал 📖", callback_data="show_journal")
+    builder.button(text="Экспорт 💾", callback_data="show_export")
 
-    builder.adjust(2, 2, 2, 2, 1)
+    # Шестой ряд - настройки и помощь
+    builder.button(text="Настройки ⚙️", callback_data="show_settings")
+    builder.button(text="Помощь ❓", callback_data="show_help")
+
+    builder.adjust(2, 2, 2, 2, 2, 2)
 
     await message.answer("Что делаем?", reply_markup=builder.as_markup())
     logger.info(f"User {message.from_user.id} opened /menu")
@@ -341,14 +346,26 @@ async def menu_show_assigned(callback: CallbackQuery):
             await callback.answer()
             return
 
+        # Предзагружаем все задачи и пользователей батчами (fix N+1)
+        task_ids = [dt.task_id for dt in delegated_tasks]
+        user_ids = [dt.assigned_by_user_id for dt in delegated_tasks]
+
+        # Загружаем задачи одним запросом
+        tasks_result = await session.execute(select(Task).where(Task.id.in_(task_ids)))
+        tasks_map = {task.id: task for task in tasks_result.scalars().all()}
+
+        # Загружаем пользователей одним запросом
+        users_result = await session.execute(select(User).where(User.user_id.in_(user_ids)))
+        users_map = {user.user_id: user for user in users_result.scalars().all()}
+
         # Формируем список
         lines = []
         for dt in delegated_tasks:
-            task = await session.get(Task, dt.task_id)
-            assigned_by_result = await session.execute(
-                select(User).where(User.user_id == dt.assigned_by_user_id)
-            )
-            assigned_by = assigned_by_result.scalar_one_or_none()
+            task = tasks_map.get(dt.task_id)
+            assigned_by = users_map.get(dt.assigned_by_user_id)
+
+            if not task or not assigned_by:
+                continue
 
             status_emoji = {"pending_acceptance": "⏳", "accepted": "✅"}
 
@@ -375,8 +392,9 @@ async def menu_show_assigned(callback: CallbackQuery):
 
         builder = InlineKeyboardBuilder()
         for dt in delegated_tasks[:10]:  # Лимит 10 задач
-            task = await session.get(Task, dt.task_id)
-            builder.button(text=f"✏️ {task.title[:15]}...", callback_data=f"DT_EDIT:{dt.id}")
+            task = tasks_map.get(dt.task_id)
+            if task:
+                builder.button(text=f"✏️ {task.title[:15]}...", callback_data=f"DT_EDIT:{dt.id}")
         builder.button(text="« Назад в меню", callback_data="back_to_menu")
         builder.adjust(1)
 
@@ -409,11 +427,91 @@ async def menu_back(callback: CallbackQuery):
     builder.button(text="Сегодня 📅", callback_data="show_today")
     builder.button(text="Статистика 📊", callback_data="show_stats")
 
-    # Пятый ряд - настройки
-    builder.button(text="Настройки ⚙️", callback_data="show_settings")
+    # Пятый ряд - дополнительно
+    builder.button(text="Журнал 📖", callback_data="show_journal")
+    builder.button(text="Экспорт 💾", callback_data="show_export")
 
-    builder.adjust(2, 2, 2, 2, 1)
+    # Шестой ряд - настройки и помощь
+    builder.button(text="Настройки ⚙️", callback_data="show_settings")
+    builder.button(text="Помощь ❓", callback_data="show_help")
+
+    builder.adjust(2, 2, 2, 2, 2, 2)
 
     await callback.message.edit_text("Что делаем?", reply_markup=builder.as_markup())
     await callback.answer()
     logger.info(f"User {callback.from_user.id} returned to menu")
+
+
+@router.callback_query(F.data == "show_journal")
+async def menu_show_journal(callback: CallbackQuery):
+    """Показывает журнал из меню."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Добавить запись", callback_data="journal_add")
+    builder.button(text="Показать за неделю", callback_data="journal_week")
+    builder.button(text="Показать за месяц", callback_data="journal_month")
+    builder.button(text="« Назад в меню", callback_data="back_to_menu")
+    builder.adjust(1)
+
+    await callback.message.edit_text(
+        "📖 <b>Журнал привычек</b>\n\n"
+        "Здесь ты можешь вести записи о выполнении привычек.\n\n"
+        "Что хочешь сделать?",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+    logger.info(f"User {callback.from_user.id} opened journal from menu")
+
+
+@router.callback_query(F.data == "show_export")
+async def menu_show_export(callback: CallbackQuery):
+    """Показывает меню экспорта/импорта."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Экспорт данных 📤", callback_data="export_data")
+    builder.button(text="Импорт данных 📥", callback_data="import_data")
+    builder.button(text="« Назад в меню", callback_data="back_to_menu")
+    builder.adjust(1)
+
+    await callback.message.edit_text(
+        "💾 <b>Экспорт и импорт</b>\n\n"
+        "Сохрани свои данные или загрузи из резервной копии.\n\n"
+        "Что хочешь сделать?",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+    logger.info(f"User {callback.from_user.id} opened export menu")
+
+
+@router.callback_query(F.data == "show_help")
+async def menu_show_help(callback: CallbackQuery):
+    """Показывает помощь из меню."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="« Назад в меню", callback_data="back_to_menu")
+    builder.adjust(1)
+
+    help_text = (
+        "❓ <b>Помощь</b>\n\n"
+        "<b>Основные команды:</b>\n"
+        "/start - Начать работу с ботом\n"
+        "/menu - Главное меню\n"
+        "/today - Сводка на сегодня\n\n"
+        "<b>Привычки:</b>\n"
+        "/addhabit - Добавить привычку\n"
+        "/listhabits - Список привычек\n\n"
+        "<b>Задачи:</b>\n"
+        "/addtask - Добавить задачу\n"
+        "/tasks - Список задач\n\n"
+        "<b>Делегирование:</b>\n"
+        "/trust <user_id> - Добавить в доверенные\n"
+        "/delegate - Делегировать задачу\n"
+        "/delegated - Мои делегированные\n"
+        "/assigned - Назначено мне\n\n"
+        "<b>Другое:</b>\n"
+        "/stats - Статистика\n"
+        "/journal - Журнал\n"
+        "/settings - Настройки\n\n"
+        "Если нужна помощь - пиши @support"
+    )
+
+    await callback.message.edit_text(help_text, reply_markup=builder.as_markup())
+    await callback.answer()
+    logger.info(f"User {callback.from_user.id} opened help from menu")

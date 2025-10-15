@@ -302,7 +302,10 @@ class ReminderScheduler:
 
     async def _send_evening_report(self, user_id: int):
         """Отправляет запрос на вечерний отчёт."""
+        from datetime import date as dt_date
+
         from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from db import HabitCompletion, Task
         from utils import get_phrase
 
         async with SessionLocal() as session:
@@ -315,7 +318,36 @@ class ReminderScheduler:
                 logger.info(f"Skipping evening report for user {user_id} - quiet hours")
                 return
 
-            message = get_phrase("evening_summary", done=0, total=0, tasks_done=0, tasks_total=0)
+            # Получаем статистику по привычкам
+            # Всего активных привычек
+            result = await session.execute(
+                select(Habits).where(Habits.user_id == user_id, Habits.active.is_(True))
+            )
+            total = len(result.scalars().all())
+
+            # Выполненных сегодня
+            today = dt_date.today()
+            result = await session.execute(
+                select(HabitCompletion).where(
+                    HabitCompletion.user_id == user_id,
+                    HabitCompletion.completion_date == today,
+                    HabitCompletion.status == "done",
+                )
+            )
+            done = len(result.scalars().all())
+
+            # Получаем статистику по задачам
+            # Всего задач
+            result = await session.execute(select(Task).where(Task.user_id == user_id))
+            tasks_total = len(result.scalars().all())
+
+            # Выполненных задач
+            result = await session.execute(select(Task).where(Task.user_id == user_id, Task.status == "done"))
+            tasks_done = len(result.scalars().all())
+
+            message = get_phrase(
+                "evening_summary", done=done, total=total, tasks_done=tasks_done, tasks_total=tasks_total
+            )
 
             builder = InlineKeyboardBuilder()
             builder.button(text="Заполню текстом ✍️", callback_data="J_ADD")

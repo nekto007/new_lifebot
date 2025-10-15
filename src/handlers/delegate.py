@@ -555,19 +555,34 @@ async def cmd_delegated(message: Message):
             )
             return
 
+        # Предзагружаем все задачи и пользователей батчами (fix N+1)
+        task_ids = [dt.task_id for dt in delegated_tasks]
+        user_ids = [dt.assigned_to_user_id for dt in delegated_tasks]
+
+        # Загружаем задачи одним запросом
+        tasks_result = await session.execute(select(Task).where(Task.id.in_(task_ids)))
+        tasks_map = {task.id: task for task in tasks_result.scalars().all()}
+
+        # Загружаем пользователей одним запросом
+        users_result = await session.execute(select(User).where(User.user_id.in_(user_ids)))
+        users_map = {user.user_id: user for user in users_result.scalars().all()}
+
         # Формируем список
         lines = []
-        for dt in delegated_tasks:
-            task = await session.get(Task, dt.task_id)
-            assigned_to = await get_user(dt.assigned_to_user_id)
+        status_emoji = {
+            "pending_acceptance": "⏳",
+            "accepted": "✅",
+            "rejected": "❌",
+            "completed": "🎉",
+            "overdue": "⚠️",
+        }
 
-            status_emoji = {
-                "pending_acceptance": "⏳",
-                "accepted": "✅",
-                "rejected": "❌",
-                "completed": "🎉",
-                "overdue": "⚠️",
-            }
+        for dt in delegated_tasks:
+            task = tasks_map.get(dt.task_id)
+            assigned_to = users_map.get(dt.assigned_to_user_id)
+
+            if not task or not assigned_to:
+                continue
 
             emoji = status_emoji.get(dt.status, "")
             deadline_str = dt.deadline.strftime("%d.%m")
@@ -609,13 +624,28 @@ async def cmd_assigned(message: Message):
             await message.answer("У вас нет назначенных задач.")
             return
 
+        # Предзагружаем все задачи и пользователей батчами (fix N+1)
+        task_ids = [dt.task_id for dt in delegated_tasks]
+        user_ids = [dt.assigned_by_user_id for dt in delegated_tasks]
+
+        # Загружаем задачи одним запросом
+        tasks_result = await session.execute(select(Task).where(Task.id.in_(task_ids)))
+        tasks_map = {task.id: task for task in tasks_result.scalars().all()}
+
+        # Загружаем пользователей одним запросом
+        users_result = await session.execute(select(User).where(User.user_id.in_(user_ids)))
+        users_map = {user.user_id: user for user in users_result.scalars().all()}
+
         # Формируем список
         lines = []
-        for dt in delegated_tasks:
-            task = await session.get(Task, dt.task_id)
-            assigned_by = await get_user(dt.assigned_by_user_id)
+        status_emoji = {"pending_acceptance": "⏳", "accepted": "✅"}
 
-            status_emoji = {"pending_acceptance": "⏳", "accepted": "✅"}
+        for dt in delegated_tasks:
+            task = tasks_map.get(dt.task_id)
+            assigned_by = users_map.get(dt.assigned_by_user_id)
+
+            if not task or not assigned_by:
+                continue
 
             emoji = status_emoji.get(dt.status, "")
             deadline_str = dt.deadline.strftime("%d.%m")
@@ -640,8 +670,9 @@ async def cmd_assigned(message: Message):
 
         builder = InlineKeyboardBuilder()
         for dt in delegated_tasks[:10]:  # Лимит 10 задач
-            task = await session.get(Task, dt.task_id)
-            builder.button(text=f"✏️ {task.title[:15]}...", callback_data=f"DT_EDIT:{dt.id}")
+            task = tasks_map.get(dt.task_id)
+            if task:
+                builder.button(text=f"✏️ {task.title[:15]}...", callback_data=f"DT_EDIT:{dt.id}")
         builder.adjust(1)
 
         await message.answer(

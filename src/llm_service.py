@@ -1,7 +1,7 @@
 # src/llm_service.py
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from config import logger
 from db import HabitContent, HabitTemplate, SessionLocal
@@ -38,22 +38,21 @@ class LLMService:
         Returns:
             Сгенерированный текст контента
         """
-        # Проверяем, есть ли свежий контент в кэше (не старше 7 дней)
+        # Проверяем, есть ли контент, сгенерированный сегодня (новый каждый день!)
         async with SessionLocal() as session:
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
             result = await session.execute(
                 select(HabitContent)
                 .where(HabitContent.habit_id == habit_id)
-                .where(HabitContent.used_count < 5)  # Не показывали больше 5 раз
+                .where(HabitContent.generated_at >= today_start)
                 .order_by(HabitContent.generated_at.desc())
             )
             cached = result.scalars().first()
 
             if cached:
-                # Проверяем возраст контента
-                age = datetime.now() - cached.generated_at
-                if age < timedelta(days=7):
-                    logger.info(f"Using cached content for habit {habit_id}, age: {age.days} days")
-                    return cached.content
+                logger.info(f"Using today's cached content for habit {habit_id}")
+                return cached.content
 
         # Нет кэша - генерируем новый контент
         if self.use_llm:
@@ -98,15 +97,8 @@ class LLMService:
                 "max_completion_tokens": 5000,  # Increased for reasoning models like gpt-5-nano
             }
 
-            import ssl
-
-            # Создаём SSL контекст без проверки сертификатов (для разработки)
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-
-            connector = aiohttp.TCPConnector(ssl=ssl_context)
-            async with aiohttp.ClientSession(connector=connector) as session:
+            # Используем безопасный SSL контекст по умолчанию
+            async with aiohttp.ClientSession() as session:
                 async with session.post(
                     "https://api.openai.com/v1/chat/completions", headers=headers, json=payload
                 ) as response:
