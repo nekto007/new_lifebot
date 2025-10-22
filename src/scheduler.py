@@ -420,9 +420,7 @@ class ReminderScheduler:
                     # Проверяем, является ли это языковой привычкой
                     if template and template.category in ("language_reading", "language_grammar"):
                         # Языковая привычка - получаем контент из Language API
-                        content = await self._get_language_content(
-                            session, user_id, template.category, habit.title
-                        )
+                        content = await self._get_language_content(session, habit)
                     else:
                         # Обычная привычка - генерируем контент через LLM
                         content = await llm_service.generate_habit_content(
@@ -456,21 +454,21 @@ class ReminderScheduler:
             except Exception as e:
                 logger.error(f"Failed to send habit reminder to user {user_id}, " f"habit {habit_id}: {e}")
 
-    async def _get_language_content(self, session, user_id: int, category: str, habit_title: str) -> str:
+    async def _get_language_content(self, session, habit: Habits) -> str:
         """
         Получает контент из Language API для языковой привычки.
 
         Args:
             session: Database session
-            user_id: ID пользователя
-            category: Категория привычки ("language_reading" или "language_grammar")
-            habit_title: Название привычки
+            habit: Объект привычки с установленным language_habit_id
 
         Returns:
             Сгенерированный контент для отправки пользователю
         """
         from api.language_api import get_user_language_api
         from db import LanguageHabit, UserLanguageSettings
+
+        user_id = habit.user_id
 
         # Получаем API клиент для пользователя
         api = await get_user_language_api(session, user_id)
@@ -481,19 +479,27 @@ class ReminderScheduler:
                 "Используй /language_setup для настройки."
             )
 
+        # Проверяем наличие language_habit_id
+        if not habit.language_habit_id:
+            return "⚠️ Привычка не связана с книгой.\n" "Пересоздай привычку через /addhabit и выбери книгу."
+
         try:
-            if category == "language_reading":
-                # Получаем или создаём LanguageHabit для чтения
-                result = await session.execute(
-                    select(LanguageHabit).where(
-                        LanguageHabit.user_id == user_id, LanguageHabit.habit_type == "reading"
-                    )
+            # Получаем LanguageHabit по ID (вместо поиска по user_id)
+            lang_habit = await session.get(LanguageHabit, habit.language_habit_id)
+
+            if not lang_habit:
+                return "❌ Ошибка: языковая привычка не найдена."
+
+            if not lang_habit.current_book_id:
+                return (
+                    "⚠️ Книга не выбрана для этой привычки.\n"
+                    "Пересоздай привычку через /addhabit и выбери книгу."
                 )
-                lang_habit = result.scalar_one_or_none()
 
-                if not lang_habit or not lang_habit.current_book_id:
-                    return "⚠️ Сначала выбери книгу для чтения.\n" "Используй /choose_book для выбора книги."
+            # Определяем категорию по habit_type
+            category = "language_reading" if lang_habit.habit_type == "reading" else "language_grammar"
 
+            if category == "language_reading":
                 # Получаем настройки пользователя для определения длины фрагмента
                 result = await session.execute(
                     select(UserLanguageSettings).where(UserLanguageSettings.user_id == user_id)
