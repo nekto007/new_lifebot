@@ -632,6 +632,11 @@ async def habit_toggle_callback(callback: CallbackQuery):
         # status_emoji = "✅" if habit.active else "⏸"
         status_text = "включена" if habit.active else "приостановлена"
 
+    # Обновляем расписание напоминаний сразу без перезапуска
+    from bot import scheduler
+
+    await scheduler.schedule_user_reminders(user_id)
+
     await callback.answer(f"Привычка «{habit.title}» {status_text}", show_alert=False)
     logger.info(f"User {user_id} toggled habit {habit_id} to {'active' if habit.active else 'paused'}")
 
@@ -704,6 +709,11 @@ async def habit_delete_confirm_callback(callback: CallbackQuery):
 
         await session.delete(habit)
         await session.commit()
+
+    # Обновляем расписание напоминаний (удаляем задание)
+    from bot import scheduler
+
+    await scheduler.schedule_user_reminders(user_id)
 
     await callback.message.edit_text(
         f"Привычка <b>{habit_title}</b> удалена.\n\n" "Всегда можешь создать новую! /addhabit"
@@ -939,10 +949,13 @@ async def habit_edit_time_process(callback: CallbackQuery, state: FSMContext):
         habit.time_of_day = parsed_time
         await session.commit()
 
+    # Обновляем расписание напоминаний сразу без перезапуска
+    from bot import scheduler
+
+    await scheduler.schedule_user_reminders(user_id)
+
     await callback.message.edit_text(
-        f"Время изменено:\n"
-        f"<s>{old_time}</s> → <b>{time_data}</b> ✅\n\n"
-        "Напоминания обновятся при следующем перезапуске бота."
+        f"Время изменено:\n" f"<s>{old_time}</s> → <b>{time_data}</b> ✅\n\n" "Напоминание обновлено!"
     )
     await state.clear()
     await callback.answer()
@@ -982,10 +995,15 @@ async def habit_edit_time_custom(message: Message, state: FSMContext):
         habit.time_of_day = parsed_time
         await session.commit()
 
+    # Обновляем расписание напоминаний сразу без перезапуска
+    from bot import scheduler
+
+    await scheduler.schedule_user_reminders(user_id)
+
     await message.answer(
         f"Время изменено:\n"
         f"<s>{old_time}</s> → <b>{parsed_time.strftime('%H:%M')}</b> ✅\n\n"
-        "Напоминания обновятся при следующем перезапуске бота."
+        "Напоминание обновлено!"
     )
     await state.clear()
     logger.info(
