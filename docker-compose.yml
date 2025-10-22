@@ -17,6 +17,11 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:///./data/data.db
       # Python unbuffered для логов в реальном времени
       - PYTHONUNBUFFERED=1
+      # Language API URL (host.docker.internal для доступа к хосту из Docker)
+      - LANGUAGE_API_URL=http://host.docker.internal:5001/api/telegram
+    # Для Linux добавляем маппинг host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - bot_network
 
