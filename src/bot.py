@@ -36,6 +36,7 @@ async def _main():
     finally:
         # Останавливаем планировщик при завершении
         scheduler.shutdown()
+        await bot.session.close()
 
 
 def main():

@@ -10,6 +10,12 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data.db")
 
+# Language Learning API settings
+# Note: Each user configures their own token via /language_setup command
+LANGUAGE_API_URL = os.getenv("LANGUAGE_API_URL", "http://localhost:5001/api/telegram")
+LANGUAGE_API_TIMEOUT = int(os.getenv("LANGUAGE_API_TIMEOUT", "30"))
+LANGUAGE_CACHE_TTL = int(os.getenv("LANGUAGE_CACHE_TTL", "300"))
+
 # Настройка логирования
 logger = logging.getLogger("new_life_bot")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

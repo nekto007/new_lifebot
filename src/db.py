@@ -2,7 +2,19 @@
 from datetime import date, datetime, time
 
 from config import DATABASE_URL
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, Time, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Time,
+    func,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -131,6 +143,106 @@ class DelegatedTask(Base):
     deadline: Mapped[datetime] = mapped_column(DateTime)
     reminder_count: Mapped[int] = mapped_column(Integer, default=0)
     last_reminder_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class LanguageHabit(Base):
+    """Языковая привычка пользователя"""
+
+    __tablename__ = "language_habits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=False, index=True)
+
+    habit_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'reading', 'grammar', 'words'
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    # Настройки привычки
+    daily_goal: Mapped[int] = mapped_column(Integer, default=500)  # Например, 500 слов в день
+    reminder_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # "09:00"
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Прогресс
+    current_streak: Mapped[int] = mapped_column(Integer, default=0)
+    longest_streak: Mapped[int] = mapped_column(Integer, default=0)
+    last_completed: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Данные для чтения
+    current_book_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # ID книги на сайте
+    current_book_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class LanguageProgress(Base):
+    """Ежедневный прогресс по языковой привычке"""
+
+    __tablename__ = "language_progress"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    habit_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("language_habits.id"), nullable=False, index=True
+    )
+
+    date: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    # Прогресс
+    words_read: Mapped[int] = mapped_column(Integer, default=0)
+    fragments_read: Mapped[int] = mapped_column(Integer, default=0)
+    lessons_completed: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Audio workflow tracking
+    audio_sent: Mapped[bool] = mapped_column(Boolean, default=False)  # Аудио отправлено
+    audio_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    text_sent: Mapped[bool] = mapped_column(Boolean, default=False)  # Текст отправлен
+    text_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    questions_sent: Mapped[bool] = mapped_column(Boolean, default=False)  # Вопросы отправлены
+    questions_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    questions_answered: Mapped[bool] = mapped_column(Boolean, default=False)  # Вопросы отвечены
+    questions_correct: Mapped[int] = mapped_column(Integer, default=0)  # Количество правильных ответов
+    questions_total: Mapped[int] = mapped_column(Integer, default=0)  # Всего вопросов
+
+    # Дополнительные данные
+    extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class UserLanguageSettings(Base):
+    """Настройки пользователя для изучения языка"""
+
+    __tablename__ = "user_language_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), unique=True, nullable=False)
+
+    # API токен для сайта (хранится локально)
+    api_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Настройки
+    preferred_fragment_length: Mapped[int] = mapped_column(
+        Integer, default=1000
+    )  # Длина фрагмента для чтения
+    reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    reminder_times: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # ["09:00", "20:00"]
+
+    # Audio workflow schedule (3-part workflow: audio → text → questions)
+    audio_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # "08:00" - время отправки аудио
+    reading_time: Mapped[str | None] = mapped_column(
+        String(5), nullable=True
+    )  # "10:00" - время отправки текста
+    questions_time: Mapped[str | None] = mapped_column(
+        String(5), nullable=True
+    )  # "20:00" - время отправки вопросов
+    audio_enabled: Mapped[bool] = mapped_column(Boolean, default=True)  # Включена ли отправка аудио
+
+    # Кэш данных (для офлайн режима)
+    cached_books: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    cache_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

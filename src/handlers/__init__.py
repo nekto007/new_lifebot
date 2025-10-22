@@ -5,6 +5,7 @@ from .habits import router as habits_router
 from .health import router as health_router
 from .help import router as help_router
 from .journal import router as journal_router
+from .language import router as language_router
 from .menu import router as menu_router
 from .settings import router as settings_router
 from .start import router as start_router
@@ -22,6 +23,7 @@ router.include_router(tasks_router)
 router.include_router(delegate_router)
 router.include_router(stats_router)
 router.include_router(journal_router)
+router.include_router(language_router)
 router.include_router(help_router)
 router.include_router(menu_router)
 router.include_router(settings_router)

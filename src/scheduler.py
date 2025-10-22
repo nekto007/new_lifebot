@@ -33,7 +33,18 @@ class ReminderScheduler:
             replace_existing=True,
         )
 
-        logger.info("Scheduler started with delegation reminders")
+        # Планируем проверку reading streaks каждый день в 00:30 UTC
+        from language_scheduler import LanguageReminderService
+
+        language_service = LanguageReminderService(self.bot, self.scheduler)
+        self.scheduler.add_job(
+            language_service.check_reading_streaks,
+            trigger=CronTrigger(hour=0, minute=30, timezone="UTC"),
+            id="language_streaks_check",
+            replace_existing=True,
+        )
+
+        logger.info("Scheduler started with delegation and language reminders")
 
     def shutdown(self):
         """Останавливает планировщик."""

@@ -23,8 +23,7 @@ bot.log
 .env
 
 # IDE
-.idea/dataSources.xml
-.idea/misc.xml
+.idea/
 .vscode/
 
 # UV lock file (можно убрать, если хочешь коммитить)
@@ -46,5 +45,19 @@ src/data.db
 src/bot.log
 bot.log
 
-# Test files (если не хочешь коммитить)
+# Test files
 tests/__pycache__/
+test_*.py
+
+# Data and logs directories
+data/
+logs/
+
+# Documentation files (except README.md)
+*.md
+!README.md
+
+# Temporary files
+structure.txt
+phrases.json
+*.txt
