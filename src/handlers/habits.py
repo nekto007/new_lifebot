@@ -573,8 +573,41 @@ async def create_habit(callback: CallbackQuery, state: FSMContext, scheduler=Non
     template_id = data.get("template_id")
     include_content = data.get("include_content", False)
 
+    # Получаем данные для языковых привычек
+    language_book_id = data.get("language_book_id")
+    language_book_title = data.get("language_book_title")
+
     # Создаём привычку
     async with SessionLocal() as session:
+        language_habit_id = None
+
+        # Если это языковая привычка с выбранной книгой - создаём LanguageHabit
+        if template_id and language_book_id:
+            from db import HabitTemplate, LanguageHabit
+
+            template = await session.get(HabitTemplate, template_id)
+
+            if template and template.category in ("language_reading", "language_grammar"):
+                # Создаём LanguageHabit
+                language_habit = LanguageHabit(
+                    user_id=user_id,
+                    habit_type="reading" if template.category == "language_reading" else "grammar",
+                    name=title,
+                    current_book_id=language_book_id,
+                    current_book_title=language_book_title,
+                    is_active=True,
+                    daily_goal=1000,  # Дефолтная цель - 1000 слов
+                )
+                session.add(language_habit)
+                await session.flush()  # Получаем ID до commit
+                language_habit_id = language_habit.id
+
+                logger.info(
+                    f"Created LanguageHabit {language_habit_id} for user {user_id}: "
+                    f"{title} (book_id={language_book_id})"
+                )
+
+        # Создаём Habit
         habit = Habits(
             user_id=user_id,
             title=title,
@@ -584,6 +617,7 @@ async def create_habit(callback: CallbackQuery, state: FSMContext, scheduler=Non
             active=True,
             template_id=template_id,
             include_content=include_content,
+            language_habit_id=language_habit_id,  # Связываем с LanguageHabit
         )
         session.add(habit)
         await session.commit()
