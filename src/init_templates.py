@@ -24,7 +24,7 @@ HABIT_TEMPLATES = [
     },
     {
         "name": "Чтение",
-        "keywords": "почитать,читай,литература,чтение перед сном",
+        "keywords": "почитать,читай,литература,перед сном",
         "category": "reading",
         "has_content": True,
         "default_prompt": (
@@ -85,7 +85,7 @@ HABIT_TEMPLATES = [
     },
     {
         "name": "Английский язык",
-        "keywords": "английский,english,язык,изучение,learning,слова,words,грамматика",
+        "keywords": "английский,english,язык,изучение,learning,слова,words,vocabulary",
         "category": "learning",
         "has_content": True,
         "default_prompt": (
@@ -136,7 +136,7 @@ HABIT_TEMPLATES = [
         "name": "Чтение книги на английском",
         "keywords": (
             "книга на английском,чтение на английском,english book,reading book,read english,"
-            "чтение книги,книга,book,reading,чтение,read"
+            "reading in english,book in english,english reading"
         ),
         "category": "language_reading",
         "has_content": True,
