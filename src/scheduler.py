@@ -274,7 +274,16 @@ class ReminderScheduler:
                 if habit.template_id:
                     template = await session.get(HabitTemplate, habit.template_id)
 
-                # Генерируем контент заранее
+                # Пропускаем пре-генерацию для языковых привычек
+                # (контент будет получен из Language API в момент отправки)
+                if template and template.category in ("language_reading", "language_grammar"):
+                    logger.info(
+                        f"Skipping pre-generation for language habit {habit_id} "
+                        f"('{habit.title}') - content will be fetched from API"
+                    )
+                    return
+
+                # Генерируем контент заранее для обычных привычек
                 content = await llm_service.generate_habit_content(
                     habit_id=habit.id,
                     habit_title=habit.title,
