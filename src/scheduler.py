@@ -490,14 +490,15 @@ class ReminderScheduler:
             if not lang_habit:
                 return "❌ Ошибка: языковая привычка не найдена."
 
-            if not lang_habit.current_book_id:
+            # Определяем категорию по habit_type
+            category = "language_reading" if lang_habit.habit_type == "reading" else "language_grammar"
+
+            # Для reading проверяем наличие книги
+            if category == "language_reading" and not lang_habit.current_book_id:
                 return (
                     "⚠️ Книга не выбрана для этой привычки.\n"
                     "Пересоздай привычку через /addhabit и выбери книгу."
                 )
-
-            # Определяем категорию по habit_type
-            category = "language_reading" if lang_habit.habit_type == "reading" else "language_grammar"
 
             if category == "language_reading":
                 # Получаем настройки пользователя для определения длины фрагмента

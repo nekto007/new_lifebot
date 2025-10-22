@@ -162,8 +162,16 @@ async def process_habit_title(message: Message, state: FSMContext):
                     await state.set_state(AddHabitStates.language_token_input)
                     return
 
-                # Токен есть - переходим к выбору книги
+                # Токен есть
                 await state.update_data(language_api_token=settings.api_token)
+
+                # Для грамматики НЕ нужна книга - сразу к расписанию
+                if template.category == "language_grammar":
+                    await state.update_data(include_content=True)
+                    await ask_habit_schedule(message, title, state)
+                    return
+
+                # Для чтения - переходим к выбору книги
                 await ask_language_book_selection(message, state, settings.api_token)
                 return
 
@@ -245,7 +253,24 @@ async def handle_language_token_input(message: Message, state: FSMContext):
     await state.update_data(language_api_token=token)
     await message.answer("✅ Токен сохранён!")
 
-    # Переходим к выбору книги
+    # Получаем template для проверки категории
+    data = await state.get_data()
+    template_id = data.get("template_id")
+
+    if template_id:
+        from db import HabitTemplate
+
+        async with SessionLocal() as session:
+            template = await session.get(HabitTemplate, template_id)
+
+            # Для грамматики НЕ нужна книга - сразу к расписанию
+            if template and template.category == "language_grammar":
+                await state.update_data(include_content=True)
+                title = data.get("title", "Привычка")
+                await ask_habit_schedule(message, title, state)
+                return
+
+    # Для чтения - переходим к выбору книги
     await ask_language_book_selection(message, state, token)
 
 
@@ -581,20 +606,21 @@ async def create_habit(callback: CallbackQuery, state: FSMContext, scheduler=Non
     async with SessionLocal() as session:
         language_habit_id = None
 
-        # Если это языковая привычка с выбранной книгой - создаём LanguageHabit
-        if template_id and language_book_id:
+        # Если это языковая привычка - создаём LanguageHabit
+        if template_id:
             from db import HabitTemplate, LanguageHabit
 
             template = await session.get(HabitTemplate, template_id)
 
             if template and template.category in ("language_reading", "language_grammar"):
                 # Создаём LanguageHabit
+                # Для reading нужен book_id, для grammar - НЕ нужен
                 language_habit = LanguageHabit(
                     user_id=user_id,
                     habit_type="reading" if template.category == "language_reading" else "grammar",
                     name=title,
-                    current_book_id=language_book_id,
-                    current_book_title=language_book_title,
+                    current_book_id=language_book_id,  # Для grammar будет None
+                    current_book_title=language_book_title,  # Для grammar будет None
                     is_active=True,
                     daily_goal=1000,  # Дефолтная цель - 1000 слов
                 )
@@ -602,10 +628,15 @@ async def create_habit(callback: CallbackQuery, state: FSMContext, scheduler=Non
                 await session.flush()  # Получаем ID до commit
                 language_habit_id = language_habit.id
 
-                logger.info(
-                    f"Created LanguageHabit {language_habit_id} for user {user_id}: "
-                    f"{title} (book_id={language_book_id})"
-                )
+                if template.category == "language_reading":
+                    logger.info(
+                        f"Created LanguageHabit {language_habit_id} for user {user_id}: "
+                        f"{title} (book_id={language_book_id})"
+                    )
+                else:
+                    logger.info(
+                        f"Created LanguageHabit {language_habit_id} for user {user_id}: " f"{title} (grammar)"
+                    )
 
         # Создаём Habit
         habit = Habits(
