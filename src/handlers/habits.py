@@ -606,7 +606,7 @@ async def habit_snooze_callback(callback: CallbackQuery):
 
 # H_TOGGLE:{habit_id}:{on|off} — toggle active status
 @router.callback_query(F.data.startswith("H_TOGGLE:"))
-async def habit_toggle_callback(callback: CallbackQuery):
+async def habit_toggle_callback(callback: CallbackQuery, scheduler=None):
     """Переключает активность привычки (вкл/выкл)."""
     user_id = callback.from_user.id
 
@@ -633,9 +633,8 @@ async def habit_toggle_callback(callback: CallbackQuery):
         status_text = "включена" if habit.active else "приостановлена"
 
     # Обновляем расписание напоминаний сразу без перезапуска
-    from bot import scheduler
-
-    await scheduler.schedule_user_reminders(user_id)
+    if scheduler:
+        await scheduler.schedule_user_reminders(user_id)
 
     await callback.answer(f"Привычка «{habit.title}» {status_text}", show_alert=False)
     logger.info(f"User {user_id} toggled habit {habit_id} to {'active' if habit.active else 'paused'}")
@@ -681,7 +680,7 @@ async def habit_delete_callback(callback: CallbackQuery):
 
 # H_DEL_CONFIRM:{habit_id} — confirm deletion
 @router.callback_query(F.data.startswith("H_DEL_CONFIRM:"))
-async def habit_delete_confirm_callback(callback: CallbackQuery):
+async def habit_delete_confirm_callback(callback: CallbackQuery, scheduler=None):
     """Удаляет привычку после подтверждения."""
     user_id = callback.from_user.id
 
@@ -711,9 +710,8 @@ async def habit_delete_confirm_callback(callback: CallbackQuery):
         await session.commit()
 
     # Обновляем расписание напоминаний (удаляем задание)
-    from bot import scheduler
-
-    await scheduler.schedule_user_reminders(user_id)
+    if scheduler:
+        await scheduler.schedule_user_reminders(user_id)
 
     await callback.message.edit_text(
         f"Привычка <b>{habit_title}</b> удалена.\n\n" "Всегда можешь создать новую! /addhabit"
@@ -914,7 +912,7 @@ async def habit_edit_time_start(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(StateFilter(EditHabitStates.edit_time), F.data.startswith("edit_time_"))
-async def habit_edit_time_process(callback: CallbackQuery, state: FSMContext):
+async def habit_edit_time_process(callback: CallbackQuery, state: FSMContext, scheduler=None):
     """Обрабатывает выбор нового времени."""
     time_data = callback.data.split("edit_time_")[1]
 
@@ -950,9 +948,8 @@ async def habit_edit_time_process(callback: CallbackQuery, state: FSMContext):
         await session.commit()
 
     # Обновляем расписание напоминаний сразу без перезапуска
-    from bot import scheduler
-
-    await scheduler.schedule_user_reminders(user_id)
+    if scheduler:
+        await scheduler.schedule_user_reminders(user_id)
 
     await callback.message.edit_text(
         f"Время изменено:\n" f"<s>{old_time}</s> → <b>{time_data}</b> ✅\n\n" "Напоминание обновлено!"
@@ -963,7 +960,7 @@ async def habit_edit_time_process(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(StateFilter(EditHabitStates.edit_time))
-async def habit_edit_time_custom(message: Message, state: FSMContext):
+async def habit_edit_time_custom(message: Message, state: FSMContext, scheduler=None):
     """Обрабатывает ручной ввод времени."""
     data = await state.get_data()
     if not data.get("time_custom"):
@@ -996,9 +993,8 @@ async def habit_edit_time_custom(message: Message, state: FSMContext):
         await session.commit()
 
     # Обновляем расписание напоминаний сразу без перезапуска
-    from bot import scheduler
-
-    await scheduler.schedule_user_reminders(user_id)
+    if scheduler:
+        await scheduler.schedule_user_reminders(user_id)
 
     await message.answer(
         f"Время изменено:\n"
