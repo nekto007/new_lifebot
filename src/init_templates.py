@@ -24,7 +24,7 @@ HABIT_TEMPLATES = [
     },
     {
         "name": "Чтение",
-        "keywords": "чтение,читать,читай,книга,книгу,книги,reading,read,литература",
+        "keywords": "почитать,читай,литература,чтение перед сном",
         "category": "reading",
         "has_content": True,
         "default_prompt": (
@@ -134,7 +134,10 @@ HABIT_TEMPLATES = [
     },
     {
         "name": "Чтение книги на английском",
-        "keywords": "чтение книги,reading book,книга на английском,english book,read english",
+        "keywords": (
+            "книга на английском,чтение на английском,english book,reading book,read english,"
+            "чтение книги,книга,book,reading,чтение,read"
+        ),
         "category": "language_reading",
         "has_content": True,
         "default_prompt": None,  # Контент берется из Language API

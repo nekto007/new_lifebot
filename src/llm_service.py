@@ -227,6 +227,7 @@ llm_service = LLMService()
 async def find_habit_template(habit_title: str) -> HabitTemplate | None:
     """
     Ищет шаблон привычки по названию.
+    Выбирает шаблон с самым длинным совпадающим ключевым словом.
 
     Args:
         habit_title: Название привычки от пользователя
@@ -241,12 +242,24 @@ async def find_habit_template(habit_title: str) -> HabitTemplate | None:
 
         title_lower = habit_title.lower()
 
-        # Ищем совпадение по ключевым словам
+        # Ищем все совпадения и выбираем лучшее (самое длинное ключевое слово)
+        best_match = None
+        longest_keyword = ""
+
         for template in templates:
             keywords = template.keywords.lower().split(",")
             for keyword in keywords:
-                if keyword.strip() in title_lower:
-                    logger.info(f"Found template '{template.name}' for habit '{habit_title}'")
-                    return template
+                keyword = keyword.strip()
+                if keyword in title_lower:
+                    # Если это ключевое слово длиннее предыдущего - обновляем
+                    if len(keyword) > len(longest_keyword):
+                        best_match = template
+                        longest_keyword = keyword
 
-        return None
+        if best_match:
+            logger.info(
+                f"Found template '{best_match.name}' for habit '{habit_title}' "
+                f"(matched keyword: '{longest_keyword}')"
+            )
+
+        return best_match
