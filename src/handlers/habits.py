@@ -44,9 +44,9 @@ class EditHabitStates(StatesGroup):
     edit_time = State()
 
 
-@router.message(Command("listhabits"))
+@router.message(Command("listhabits", "habits"))
 async def cmd_listhabits(message: Message):
-    """Команда /listhabits - показывает список привычек с кнопками управления."""
+    """Команда /listhabits или /habits - показывает список привычек с кнопками управления."""
     user_id = message.from_user.id
 
     async with SessionLocal() as session:
