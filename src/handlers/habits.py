@@ -162,11 +162,10 @@ async def process_habit_title(message: Message, state: FSMContext):
                     await state.set_state(AddHabitStates.language_token_input)
                     return
 
-                # Токен есть - переходим к выбору книги (следующий этап)
+                # Токен есть - переходим к выбору книги
                 await state.update_data(language_api_token=settings.api_token)
-                # TODO: Этап 3 - здесь будет выбор книги
-                # Пока заглушка - переходим к вопросу про контент
-                pass
+                await ask_language_book_selection(message, state, settings.api_token)
+                return
 
         # Обычный flow - спрашиваем про контент
         builder = InlineKeyboardBuilder()
@@ -246,11 +245,108 @@ async def handle_language_token_input(message: Message, state: FSMContext):
     await state.update_data(language_api_token=token)
     await message.answer("✅ Токен сохранён!")
 
-    # TODO: Этап 3 - переходим к выбору книги
-    # Пока заглушка - переходим к расписанию
+    # Переходим к выбору книги
+    await ask_language_book_selection(message, state, token)
+
+
+@router.callback_query(StateFilter(AddHabitStates.language_book_selection), F.data.startswith("lang_book:"))
+async def handle_language_book_selection(callback: CallbackQuery, state: FSMContext):
+    """Обрабатывает выбор книги для языковой привычки."""
+    from api.language_api import LanguageAPI
+
+    # Извлекаем book_id из callback_data
+    book_id = int(callback.data.split(":")[1])
+
+    # Получаем токен из state
     data = await state.get_data()
-    title = data.get("title", "Привычка")
-    await ask_habit_schedule(message, title, state)
+    api_token = data.get("language_api_token")
+
+    if not api_token:
+        await callback.answer("Ошибка: токен не найден", show_alert=True)
+        return
+
+    # Получаем информацию о книге
+    try:
+        api = LanguageAPI(user_token=api_token)
+        books = await api.get_books()
+        await api.close()
+
+        # Находим выбранную книгу
+        selected_book = next((b for b in books if b.get("id") == book_id), None)
+
+        if not selected_book:
+            await callback.answer("Книга не найдена", show_alert=True)
+            return
+
+        book_title = selected_book.get("title", "Неизвестная книга")
+
+        # Сохраняем в state
+        await state.update_data(language_book_id=book_id, language_book_title=book_title)
+
+        await callback.message.edit_text(f"✅ Выбрана книга: <b>{book_title}</b>")
+        await callback.answer()
+
+        # Для языковых привычек контент всегда включен, пропускаем вопрос про контент
+        await state.update_data(include_content=True)
+
+        # Переходим к расписанию
+        title = data.get("title", "Привычка")
+        await ask_habit_schedule(callback.message, title, state)
+
+    except Exception as e:
+        logger.error(f"Failed to get book info: {e}")
+        await callback.answer("Ошибка при получении информации о книге", show_alert=True)
+
+
+async def ask_language_book_selection(message: Message, state: FSMContext, api_token: str):
+    """Показывает список книг для выбора."""
+    from api.language_api import LanguageAPI
+
+    try:
+        api = LanguageAPI(user_token=api_token)
+        books = await api.get_books()
+        await api.close()
+
+        if not books:
+            await message.answer(
+                "❌ Книги не найдены.\n\n" "Попробуй позже или обратись к администратору API."
+            )
+            # Переходим к расписанию без книги (создастся привычка без language_habit_id)
+            data = await state.get_data()
+            title = data.get("title", "Привычка")
+            await ask_habit_schedule(message, title, state)
+            return
+
+        # Показываем первые 10 книг
+        builder = InlineKeyboardBuilder()
+        for book in books[:10]:
+            book_id = book.get("id")
+            book_title = book.get("title", "Без названия")
+            # Обрезаем название до 40 символов для кнопки
+            button_text = book_title if len(book_title) <= 40 else book_title[:37] + "..."
+            builder.button(text=button_text, callback_data=f"lang_book:{book_id}")
+
+        builder.adjust(1)
+
+        books_count = len(books)
+        data = await state.get_data()
+        title = data.get("title", "Привычка")
+
+        await message.answer(
+            f"📚 <b>{title}</b>\n\n" f"Найдено книг: {books_count}\n" f"Выбери книгу для этой привычки:",
+            reply_markup=builder.as_markup(),
+        )
+        await state.set_state(AddHabitStates.language_book_selection)
+
+    except Exception as e:
+        logger.error(f"Failed to get books from Language API: {e}")
+        await message.answer(
+            "❌ Ошибка при загрузке списка книг.\n\n" "Проверь, что Language API работает и токен правильный."
+        )
+        # Переходим к расписанию без книги
+        data = await state.get_data()
+        title = data.get("title", "Привычка")
+        await ask_habit_schedule(message, title, state)
 
 
 async def ask_habit_schedule(message: Message, title: str, state: FSMContext):
