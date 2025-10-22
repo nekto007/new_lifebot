@@ -757,3 +757,128 @@ async def delegated_task_done_callback(callback: CallbackQuery):
         )
 
     await callback.answer("🎉 Отлично! Задача выполнена!")
+
+
+@router.callback_query(F.data == "delegate_new")
+async def delegate_new_callback(callback: CallbackQuery, state: FSMContext):
+    """Начинает процесс делегирования задачи из меню."""
+    user_id = callback.from_user.id
+
+    user = await get_user(user_id)
+    if not user or not user.lang:
+        await callback.message.edit_text(
+            "Привет! Сначала нужно пройти настройку.\n\n" "Используй команду /start для начала работы."
+        )
+        await callback.answer()
+        return
+
+    # Получаем список доверенных пользователей
+    trusted_users = await get_trusted_users(user_id)
+
+    if not trusted_users:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="« Назад в меню", callback_data="back_to_menu")
+        builder.adjust(1)
+
+        await callback.message.edit_text(
+            "У вас пока нет доверенных пользователей для делегирования.\n\n"
+            "Используйте /trust для добавления пользователя.",
+            reply_markup=builder.as_markup(),
+        )
+        await callback.answer()
+        return
+
+    builder = InlineKeyboardBuilder()
+    for trusted_user in trusted_users:
+        builder.button(text=f"{trusted_user.first_name}", callback_data=f"DELEGATE_TO:{trusted_user.user_id}")
+    builder.button(text="« Назад в меню", callback_data="back_to_menu")
+    builder.adjust(1)
+
+    await state.set_state(DelegateTaskStates.select_user)
+    await callback.message.edit_text("Кому делегировать задачу?", reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "delegate_my")
+async def delegate_my_callback(callback: CallbackQuery):
+    """Показывает задачи, которые вы назначили другим (из меню)."""
+    user_id = callback.from_user.id
+
+    user = await get_user(user_id)
+    if not user or not user.lang:
+        await callback.message.edit_text(
+            "Привет! Сначала нужно пройти настройку.\n\n" "Используй команду /start для начала работы."
+        )
+        await callback.answer()
+        return
+
+    async with SessionLocal() as session:
+        # Получаем делегированные задачи
+        result = await session.execute(
+            select(DelegatedTask)
+            .where(DelegatedTask.assigned_by_user_id == user_id)
+            .order_by(DelegatedTask.created_at.desc())
+        )
+        delegated_tasks = result.scalars().all()
+
+        if not delegated_tasks:
+            builder = InlineKeyboardBuilder()
+            builder.button(text="« Назад в меню", callback_data="back_to_menu")
+            builder.adjust(1)
+
+            await callback.message.edit_text(
+                "Вы пока не делегировали задачи.\n\n"
+                "Используйте кнопку 'Делегировать задачу' для создания делегированной задачи.",
+                reply_markup=builder.as_markup(),
+            )
+            await callback.answer()
+            return
+
+        # Предзагружаем все задачи и пользователей батчами (fix N+1)
+        task_ids = [dt.task_id for dt in delegated_tasks]
+        user_ids = [dt.assigned_to_user_id for dt in delegated_tasks]
+
+        # Загружаем задачи одним запросом
+        tasks_result = await session.execute(select(Task).where(Task.id.in_(task_ids)))
+        tasks_map = {task.id: task for task in tasks_result.scalars().all()}
+
+        # Загружаем пользователей одним запросом
+        users_result = await session.execute(select(User).where(User.user_id.in_(user_ids)))
+        users_map = {user.user_id: user for user in users_result.scalars().all()}
+
+        # Формируем список
+        lines = []
+        status_emoji = {
+            "pending_acceptance": "⏳",
+            "accepted": "✅",
+            "rejected": "❌",
+            "completed": "🎉",
+            "overdue": "⚠️",
+        }
+
+        for dt in delegated_tasks:
+            task = tasks_map.get(dt.task_id)
+            assigned_to = users_map.get(dt.assigned_to_user_id)
+
+            if not task or not assigned_to:
+                continue
+
+            emoji = status_emoji.get(dt.status, "")
+            deadline_str = dt.deadline.strftime("%d.%m")
+
+            lines.append(
+                f"{emoji} <b>{task.title}</b>\n"
+                f"   → {assigned_to.first_name} | {deadline_str} | {dt.status}"
+            )
+
+        text = "\n\n".join(lines)
+
+        builder = InlineKeyboardBuilder()
+        builder.button(text="« Назад в меню", callback_data="back_to_menu")
+        builder.adjust(1)
+
+        await callback.message.edit_text(
+            f"<b>Ваши делегированные задачи:</b>\n\n{text}", reply_markup=builder.as_markup()
+        )
+
+    await callback.answer()
