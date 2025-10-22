@@ -132,6 +132,20 @@ HABIT_TEMPLATES = [
             "Пиши по-русски, без эмодзи. Варьируй упражнения для разных групп мышц."
         ),
     },
+    {
+        "name": "Чтение книги на английском",
+        "keywords": "чтение книги,reading book,книга на английском,english book,read english",
+        "category": "language_reading",
+        "has_content": True,
+        "default_prompt": None,  # Контент берется из Language API
+    },
+    {
+        "name": "Изучение грамматики английского",
+        "keywords": "грамматика английского,english grammar,grammar lesson,урок грамматики",
+        "category": "language_grammar",
+        "has_content": True,
+        "default_prompt": None,  # Контент берется из Language API
+    },
 ]
 
 

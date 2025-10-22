@@ -408,19 +408,25 @@ class ReminderScheduler:
                     if habit.template_id:
                         template = await session.get(HabitTemplate, habit.template_id)
 
-                    # Генерируем контент
-                    content = await llm_service.generate_habit_content(
-                        habit_id=habit.id,
-                        habit_title=habit.title,
-                        template=template,
-                        custom_prompt=habit.content_prompt,
-                    )
+                    # Проверяем, является ли это языковой привычкой
+                    if template and template.category in ("language_reading", "language_grammar"):
+                        # Языковая привычка - получаем контент из Language API
+                        content = await self._get_language_content(
+                            session, user_id, template.category, habit.title
+                        )
+                    else:
+                        # Обычная привычка - генерируем контент через LLM
+                        content = await llm_service.generate_habit_content(
+                            habit_id=habit.id,
+                            habit_title=habit.title,
+                            template=template,
+                            custom_prompt=habit.content_prompt,
+                        )
+                        # Отмечаем, что контент был использован
+                        await llm_service.mark_content_used(habit.id, content)
 
                     # Добавляем контент к сообщению
                     message += f"{content}\n\n"
-
-                    # Отмечаем, что контент был использован
-                    await llm_service.mark_content_used(habit.id, content)
 
                     logger.info(f"Generated content for habit {habit_id}: {content[:50]}...")
                 except Exception as e:
@@ -440,6 +446,112 @@ class ReminderScheduler:
                 logger.info(f"Sent habit reminder to user {user_id}, habit {habit_id}")
             except Exception as e:
                 logger.error(f"Failed to send habit reminder to user {user_id}, " f"habit {habit_id}: {e}")
+
+    async def _get_language_content(self, session, user_id: int, category: str, habit_title: str) -> str:
+        """
+        Получает контент из Language API для языковой привычки.
+
+        Args:
+            session: Database session
+            user_id: ID пользователя
+            category: Категория привычки ("language_reading" или "language_grammar")
+            habit_title: Название привычки
+
+        Returns:
+            Сгенерированный контент для отправки пользователю
+        """
+        from api.language_api import get_user_language_api
+        from db import LanguageHabit, UserLanguageSettings
+
+        # Получаем API клиент для пользователя
+        api = await get_user_language_api(session, user_id)
+
+        if not api:
+            return (
+                "⚠️ Для получения контента нужно настроить Language API.\n"
+                "Используй /language_setup для настройки."
+            )
+
+        try:
+            if category == "language_reading":
+                # Получаем или создаём LanguageHabit для чтения
+                result = await session.execute(
+                    select(LanguageHabit).where(
+                        LanguageHabit.user_id == user_id, LanguageHabit.habit_type == "reading"
+                    )
+                )
+                lang_habit = result.scalar_one_or_none()
+
+                if not lang_habit or not lang_habit.current_book_id:
+                    return "⚠️ Сначала выбери книгу для чтения.\n" "Используй /choose_book для выбора книги."
+
+                # Получаем настройки пользователя для определения длины фрагмента
+                result = await session.execute(
+                    select(UserLanguageSettings).where(UserLanguageSettings.user_id == user_id)
+                )
+                settings = result.scalar_one_or_none()
+                fragment_length = settings.preferred_fragment_length if settings else 1000
+
+                # Получаем следующий фрагмент книги
+                fragment_data = await api.read_next(
+                    book_id=lang_habit.current_book_id, length=fragment_length
+                )
+
+                fragment = fragment_data.get("fragment", {})
+                text = fragment.get("text", "").replace("\\n", "\n")
+                chapter = fragment.get("chapter", {})
+                book = fragment_data.get("book", {})
+
+                if not text:
+                    return "❌ Не удалось получить фрагмент книги. Возможно, книга прочитана до конца."
+
+                # Формируем красивое сообщение с фрагментом
+                content = (
+                    f"📖 <b>{book.get('title', 'Книга')}</b>\n"
+                    f"Глава {chapter.get('number', '?')}: {chapter.get('title', 'Глава')}\n\n"
+                    f"{text}"
+                )
+
+                logger.info(
+                    f"Fetched reading fragment for user {user_id}: "
+                    f"{book.get('title', 'Unknown')} - {len(text)} chars"
+                )
+
+                return content
+
+            elif category == "language_grammar":
+                # Получаем последний урок грамматики
+                grammar_data = await api.get_latest_grammar()
+
+                lesson = grammar_data.get("lesson", {})
+                title = lesson.get("title", "Грамматика")
+                explanation = lesson.get("explanation", "")
+                examples = lesson.get("examples", [])
+
+                if not explanation:
+                    return "❌ Не удалось получить урок грамматики."
+
+                # Формируем сообщение с грамматическим уроком
+                content = f"📝 <b>{title}</b>\n\n{explanation}"
+
+                if examples:
+                    content += "\n\n<b>Примеры:</b>"
+                    for i, example in enumerate(examples[:3], 1):  # Максимум 3 примера
+                        content += f"\n{i}. {example}"
+
+                logger.info(f"Fetched grammar lesson for user {user_id}: {title}")
+
+                return content
+
+            else:
+                return f"❌ Неизвестная категория языковой привычки: {category}"
+
+        except Exception as e:
+            logger.error(f"Failed to fetch language content for user {user_id}, category {category}: {e}")
+            return f"❌ Ошибка при получении контента: {str(e)[:100]}"
+        finally:
+            # Закрываем API клиент
+            await api.close()
 
     async def _is_quiet_hours(self, user: User) -> bool:
         """Проверяет, находится ли текущее время в тихих часах пользователя."""
