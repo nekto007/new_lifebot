@@ -37,7 +37,9 @@ class AudioService:
         text_hash = hashlib.md5(f"{text}:{language}".encode()).hexdigest()
         return self.cache_dir / f"{text_hash}.mp3"
 
-    async def generate_audio(self, text: str, language: str = "en", use_cache: bool = True) -> BytesIO | None:
+    async def generate_audio(
+        self, text: str, language: str = "en", use_cache: bool = True, max_length: int = 5000
+    ) -> BytesIO | None:
         """
         Generate audio from text using gTTS
 
@@ -45,6 +47,7 @@ class AudioService:
             text: Text to convert to speech
             language: Language code (en, ru, etc.)
             use_cache: Whether to use cached audio if available
+            max_length: Maximum text length (default 5000 chars)
 
         Returns:
             BytesIO buffer with MP3 audio data, or None if generation failed
@@ -56,6 +59,11 @@ class AudioService:
         if not text or not text.strip():
             logger.error("Cannot generate audio: empty text")
             return None
+
+        # Валидация длины текста
+        if len(text) > max_length:
+            logger.warning(f"Text too long for TTS: {len(text)} chars (max {max_length}). Truncating...")
+            text = text[:max_length]
 
         # Check cache first
         cache_path = self._get_cache_path(text, language)
@@ -70,33 +78,52 @@ class AudioService:
                 logger.error(f"Failed to read cached audio: {e}")
                 # Continue to regeneration
 
-        # Generate new audio
-        try:
-            logger.info(f"Generating audio for text ({len(text)} chars) in language: {language}")
+        # Generate new audio with retry
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                logger.info(
+                    f"Generating audio for text ({len(text)} chars) in language: {language} "
+                    f"(attempt {attempt + 1}/{max_retries + 1})"
+                )
 
-            # Create gTTS object
-            tts = gTTS(text=text, lang=language, slow=False)
+                # Create gTTS object
+                tts = gTTS(text=text, lang=language, slow=False)
 
-            # Save to buffer
-            audio_buffer = BytesIO()
-            tts.write_to_fp(audio_buffer)
-            audio_buffer.seek(0)
+                # Save to buffer
+                audio_buffer = BytesIO()
+                tts.write_to_fp(audio_buffer)
+                audio_buffer.seek(0)
 
-            # Cache the audio file
-            if use_cache:
-                try:
-                    with open(cache_path, "wb") as f:
-                        f.write(audio_buffer.getvalue())
-                    logger.info(f"Cached audio at: {cache_path}")
-                    audio_buffer.seek(0)  # Reset after writing
-                except Exception as e:
-                    logger.error(f"Failed to cache audio: {e}")
+                # Cache the audio file
+                if use_cache:
+                    try:
+                        with open(cache_path, "wb") as f:
+                            f.write(audio_buffer.getvalue())
+                        logger.info(f"Cached audio at: {cache_path}")
+                        audio_buffer.seek(0)  # Reset after writing
+                    except Exception as e:
+                        logger.error(f"Failed to cache audio: {e}")
+                        # Не критично, продолжаем
 
-            return audio_buffer
+                return audio_buffer
 
-        except Exception as e:
-            logger.error(f"Failed to generate audio: {e}")
-            return None
+            except ConnectionError as e:
+                logger.warning(f"Network error generating audio (attempt {attempt + 1}): {e}")
+                if attempt < max_retries:
+                    # Exponential backoff
+                    import asyncio
+
+                    await asyncio.sleep(2**attempt)
+                    continue
+                else:
+                    logger.error(f"Failed to generate audio after {max_retries + 1} attempts")
+                    return None
+            except Exception as e:
+                logger.error(f"Unexpected error generating audio: {e}", exc_info=True)
+                return None
+
+        return None
 
     def clear_cache(self, older_than_days: int | None = None):
         """

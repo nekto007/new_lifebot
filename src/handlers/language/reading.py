@@ -16,6 +16,7 @@ from keyboards.language import (
     get_reading_keyboard,
 )
 from sqlalchemy import func, select
+from utils import escape_html
 
 
 def escape_markdown(text: str) -> str:
@@ -80,9 +81,10 @@ async def _display_fragment(
     """Отображает фрагмент книги с правильным форматированием"""
 
     if fragment_data.get("finished"):
+        book_title = escape_html(fragment_data["book"]["title"])
         await message.answer(
             f"🎉 Поздравляю! Вы закончили книгу:\n"
-            f"«{fragment_data['book']['title']}»\n\n"
+            f"«{book_title}»\n\n"
             f"Выберите новую книгу: /choose_book"
         )
         habit.current_book_id = None
@@ -112,12 +114,17 @@ async def _display_fragment(
     # Обрезаем до последнего предложения
     text = trim_to_sentence(raw_text, target_length)
 
+    # Экранируем HTML для безопасности
+    book_title = escape_html(book["title"])
+    chapter_title = escape_html(chapter["title"])
+    text_safe = escape_html(text)
+
     # Формируем сообщение
     message_text = (
-        f"📖 <b>{book['title']}</b>\n"
-        f"Глава {chapter['number']}: {chapter['title']}\n"
+        f"📖 <b>{book_title}</b>\n"
+        f"Глава {chapter['number']}: {chapter_title}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"{text}\n\n"
+        f"{text_safe}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 Прогресс главы: {chapter['progress_pct']:.1f}%\n"
         f"📈 Общий прогресс: {book['overall_progress_pct']:.1f}%\n"

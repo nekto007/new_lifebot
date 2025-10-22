@@ -311,27 +311,40 @@ class LanguageReminderService:
                     return
 
                 # Generate audio
-                audio_buffer = await audio_service.generate_audio(text, language="en")
-                if not audio_buffer:
-                    logger.error(f"Failed to generate audio for user {user_id}")
-                    await self.bot.send_message(
-                        user_id, "❌ Не удалось сгенерировать аудио. Попробуйте позже."
-                    )
-                    return
-
-                # Send audio message
                 book = fragment_data.get("book", {})
                 chapter = fragment_data.get("chapter", {})
 
-                caption = (
-                    f"🎧 <b>Аудио для прослушивания</b>\n\n"
-                    f"📖 {book.get('title', 'Книга')}\n"
-                    f"Глава {chapter.get('number', '?')}: {chapter.get('title', 'Глава')}\n\n"
-                    f"Прослушайте этот фрагмент, чтобы подготовиться к чтению.\n"
-                    f"📝 Текст для чтения придёт позже."
-                )
+                audio_buffer = await audio_service.generate_audio(text, language="en")
 
-                await self.bot.send_voice(user_id, voice=audio_buffer, caption=caption)
+                if audio_buffer:
+                    # Send audio message
+                    caption = (
+                        f"🎧 <b>Аудио для прослушивания</b>\n\n"
+                        f"📖 {book.get('title', 'Книга')}\n"
+                        f"Глава {chapter.get('number', '?')}: {chapter.get('title', 'Глава')}\n\n"
+                        f"Прослушайте этот фрагмент, чтобы подготовиться к чтению.\n"
+                        f"📝 Текст для чтения придёт позже."
+                    )
+
+                    await self.bot.send_voice(user_id, voice=audio_buffer, caption=caption)
+                else:
+                    # Fallback: отправляем текст без аудио
+                    logger.warning(f"Audio generation failed for user {user_id}, sending text-only preview")
+
+                    # Обрезаем текст для preview
+                    preview_text = text[:500] + "..." if len(text) > 500 else text
+
+                    fallback_message = (
+                        f"📖 <b>Текст для прослушивания</b>\n\n"
+                        f"📖 {book.get('title', 'Книга')}\n"
+                        f"Глава {chapter.get('number', '?')}: {chapter.get('title', 'Глава')}\n\n"
+                        f"⚠️ <i>Аудио временно недоступно. "
+                        f"Вот текст для предварительного ознакомления:</i>\n\n"
+                        f"{preview_text}\n\n"
+                        f"📝 Полный текст для чтения придёт позже."
+                    )
+
+                    await self.bot.send_message(user_id, fallback_message)
 
                 # Update progress
                 if not progress:

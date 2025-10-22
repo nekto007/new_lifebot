@@ -9,6 +9,7 @@ from api import APIAuthError, APIError, LanguageAPI
 from config import logger
 from db import SessionLocal, UserLanguageSettings
 from sqlalchemy import select
+from utils import sanitize_text_input, validate_api_token, validate_time_format, validate_time_sequence
 
 router = Router()
 
@@ -61,7 +62,7 @@ async def cancel_setup(message: Message, state: FSMContext):
 @router.message(LanguageSetupStates.waiting_for_token)
 async def process_token(message: Message, state: FSMContext):
     """Обработка введенного токена"""
-    token = message.text.strip()
+    token = sanitize_text_input(message.text, max_length=500)
     user_id = message.from_user.id
 
     # Удаляем сообщение с токеном для безопасности
@@ -69,6 +70,14 @@ async def process_token(message: Message, state: FSMContext):
         await message.delete()
     except Exception:
         pass  # Если не получилось удалить - не страшно
+
+    # Базовая валидация токена
+    is_valid, error_msg = validate_api_token(token)
+    if not is_valid:
+        await message.answer(
+            f"❌ <b>Ошибка валидации токена</b>\n\n{error_msg}\n\nПопробуйте еще раз или /cancel"
+        )
+        return
 
     # Проверяем токен, пытаясь получить список книг
     processing_msg = await message.answer("⏳ Проверяю токен...")
@@ -275,22 +284,15 @@ async def cmd_toggle_audio(message: Message):
         await message.answer(f"{'✅' if settings.audio_enabled else '❌'} Отправка аудио {status}")
 
 
-def _validate_time(time_str: str) -> bool:
-    """Проверяет формат времени HH:MM"""
-    import re
-
-    pattern = r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
-    return bool(re.match(pattern, time_str))
-
-
 @router.message(LanguageSetupStates.configuring_audio_time)
 async def process_audio_time(message: Message, state: FSMContext):
     """Обработка времени отправки аудио"""
-    time_str = message.text.strip()
+    time_str = sanitize_text_input(message.text, max_length=10)
     user_id = message.from_user.id
 
-    if not _validate_time(time_str):
-        await message.answer("❌ Неверный формат времени. Используйте HH:MM (например, 08:00)")
+    is_valid, error_msg = validate_time_format(time_str)
+    if not is_valid:
+        await message.answer(f"❌ {error_msg}")
         return
 
     async with SessionLocal() as session:
@@ -317,11 +319,12 @@ async def process_audio_time(message: Message, state: FSMContext):
 @router.message(LanguageSetupStates.configuring_reading_time)
 async def process_reading_time(message: Message, state: FSMContext):
     """Обработка времени отправки текста"""
-    time_str = message.text.strip()
+    time_str = sanitize_text_input(message.text, max_length=10)
     user_id = message.from_user.id
 
-    if not _validate_time(time_str):
-        await message.answer("❌ Неверный формат времени. Используйте HH:MM (например, 10:00)")
+    is_valid, error_msg = validate_time_format(time_str)
+    if not is_valid:
+        await message.answer(f"❌ {error_msg}")
         return
 
     async with SessionLocal() as session:
@@ -348,11 +351,12 @@ async def process_reading_time(message: Message, state: FSMContext):
 @router.message(LanguageSetupStates.configuring_questions_time)
 async def process_questions_time(message: Message, state: FSMContext):
     """Обработка времени отправки вопросов"""
-    time_str = message.text.strip()
+    time_str = sanitize_text_input(message.text, max_length=10)
     user_id = message.from_user.id
 
-    if not _validate_time(time_str):
-        await message.answer("❌ Неверный формат времени. Используйте HH:MM (например, 20:00)")
+    is_valid, error_msg = validate_time_format(time_str)
+    if not is_valid:
+        await message.answer(f"❌ {error_msg}")
         return
 
     async with SessionLocal() as session:
@@ -367,6 +371,18 @@ async def process_questions_time(message: Message, state: FSMContext):
             return
 
         settings.questions_time = time_str
+
+        # Валидация последовательности времен
+        if settings.audio_time and settings.reading_time:
+            is_valid_sequence, sequence_error = validate_time_sequence(
+                settings.audio_time, settings.reading_time, time_str
+            )
+            if not is_valid_sequence:
+                await message.answer(f"❌ {sequence_error}\n\nИспользуйте /audio_schedule для изменения.")
+                # Не сохраняем questions_time, если последовательность нарушена
+                await state.clear()
+                return
+
         await session.commit()
 
         # Now schedule the workflow

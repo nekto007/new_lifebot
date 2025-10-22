@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from api import APIAuthError, APIError, get_user_language_api
 from db import SessionLocal
+from utils import escape_html
 
 router = Router()
 
@@ -35,12 +36,20 @@ async def cmd_grammar(message: Message):
             if len(description) > 500:
                 description = description[:500] + "..."
 
+            # Экранируем HTML для безопасности
+            title = escape_html(lesson["title"])
+            module_title = escape_html(module_info["title"])
+            level_code = escape_html(module_info["level"]["code"])
+            level_name = escape_html(module_info["level"]["name"])
+            description_safe = escape_html(description)
+            status = escape_html(lesson["progress"]["status"])
+
             message_text = (
-                f"📖 <b>{lesson['title']}</b>\n\n"
-                f"📚 Модуль: {module_info['title']}\n"
-                f"🎓 Уровень: {module_info['level']['code']} - {module_info['level']['name']}\n\n"
-                f"<i>{description}</i>\n\n"
-                f"📊 Статус: {lesson['progress']['status']}\n"
+                f"📖 <b>{title}</b>\n\n"
+                f"📚 Модуль: {module_title}\n"
+                f"🎓 Уровень: {level_code} - {level_name}\n\n"
+                f"<i>{description_safe}</i>\n\n"
+                f"📊 Статус: {status}\n"
                 f"⭐ Оценка: {lesson['progress']['score']}/100"
             )
 
@@ -72,13 +81,19 @@ async def cmd_random_excerpt(message: Message):
             book = excerpt["book"]
             chapter = excerpt["chapter"]
 
+            # Экранируем HTML для безопасности
+            book_title = escape_html(book["title"])
+            author = escape_html(book["author"])
+            chapter_title = escape_html(chapter["title"])
+            text_safe = escape_html(excerpt["text"])
+
             message_text = (
                 f"📖 <b>Случайный отрывок</b>\n\n"
-                f"📚 Из книги: <i>{book['title']}</i>\n"
-                f"✍️ Автор: {book['author']}\n"
-                f"📄 Глава {chapter['number']}: {chapter['title']}\n"
+                f"📚 Из книги: <i>{book_title}</i>\n"
+                f"✍️ Автор: {author}\n"
+                f"📄 Глава {chapter['number']}: {chapter_title}\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"{excerpt['text']}\n\n"
+                f"{text_safe}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━"
             )
 

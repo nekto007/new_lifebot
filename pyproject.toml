@@ -12,6 +12,7 @@ dependencies = [
     "apscheduler>=3.10.4",
     "aiohttp>=3.11.11",
     "gTTS>=2.5.0",
+    "tenacity>=8.2.3",
 ]
 
 [tool.black]
