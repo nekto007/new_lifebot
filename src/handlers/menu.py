@@ -533,6 +533,72 @@ async def menu_show_language(callback: CallbackQuery):
     logger.info(f"User {callback.from_user.id} opened language menu")
 
 
+@router.callback_query(F.data == "lang_setup_start")
+async def menu_lang_setup(callback: CallbackQuery):
+    """Перенаправляет на настройку Language API."""
+    await callback.message.edit_text(
+        "🔑 <b>Настройка Language Learning API</b>\n\n"
+        "Для использования функций чтения книг нужен API токен.\n\n"
+        "<b>Как получить токен:</b>\n"
+        "1. Зарегистрируйтесь на сайте Language Learning\n"
+        "2. Войдите в личный кабинет\n"
+        "3. Перейдите в раздел API Settings\n"
+        "4. Сгенерируйте токен для Telegram\n\n"
+        "Используйте команду /language_setup для продолжения настройки."
+    )
+    await callback.answer()
+    logger.info(f"User {callback.from_user.id} started language setup from menu")
+
+
+@router.callback_query(F.data == "lang_choose_book")
+async def menu_lang_choose_book(callback: CallbackQuery):
+    """Перенаправляет на выбор книги."""
+    await callback.message.edit_text(
+        "📚 <b>Выбор книги</b>\n\n" "Используйте команду /choose_book для выбора книги для чтения."
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "lang_read")
+async def menu_lang_read(callback: CallbackQuery):
+    """Перенаправляет на чтение."""
+    await callback.message.edit_text(
+        "📖 <b>Чтение</b>\n\n" "Используйте команду /read для чтения текущего фрагмента."
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "lang_grammar")
+async def menu_lang_grammar(callback: CallbackQuery):
+    """Перенаправляет на грамматику."""
+    await callback.message.edit_text(
+        "📝 <b>Грамматика</b>\n\n" "Используйте команду /grammar для изучения грамматики."
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "lang_schedule")
+async def menu_lang_schedule(callback: CallbackQuery):
+    """Перенаправляет на настройку расписания."""
+    await callback.message.edit_text(
+        "🔔 <b>Расписание аудио-воркфлоу</b>\n\n"
+        "Используйте команду /audio_schedule для настройки 3-этапного рабочего процесса:\n"
+        "1️⃣ Утро: Аудио фрагмента\n"
+        "2️⃣ День: Текст для чтения\n"
+        "3️⃣ Вечер: Вопросы на понимание"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "lang_status")
+async def menu_lang_status(callback: CallbackQuery):
+    """Перенаправляет на статус API."""
+    await callback.message.edit_text(
+        "✅ <b>Статус API</b>\n\n" "Используйте команду /language_status для проверки статуса API."
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data == "show_help")
 async def menu_show_help(callback: CallbackQuery):
     """Показывает помощь из меню."""
