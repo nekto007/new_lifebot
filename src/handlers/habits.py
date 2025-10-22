@@ -148,6 +148,8 @@ async def process_habit_title(message: Message, state: FSMContext):
             "reading": "Например: 'Прочитай 10 страниц'",
             "meditation": "Например: '5 минут медитации с фокусом на дыхании'",
             "health": "Например: 'Выпей 2 стакана воды'",
+            "language_reading": "Фрагменты книги из Language API (токен: /language_setup)",
+            "language_grammar": "Уроки грамматики из Language API (токен: /language_setup)",
         }.get(template.category, "Например: конкретное задание для этой привычки")
 
         await message.answer(
