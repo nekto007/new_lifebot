@@ -763,9 +763,11 @@ async def habit_done_callback(callback: CallbackQuery):
     # Случайный эмодзи для положительного подкрепления
     emoji = random.choice(COMPLETION_EMOJIS)
 
-    await callback.message.edit_text(
-        f"Отлично, зачёл «{habit.title}» за {completion_date.strftime('%d.%m.%Y')} {emoji}"
-    )
+    # Сохраняем исходный контент и добавляем отметку о выполнении
+    original_text = callback.message.html_text or callback.message.text or ""
+    completion_header = f"✅ <b>Выполнено {completion_date.strftime('%d.%m.%Y')}</b> {emoji}\n\n"
+
+    await callback.message.edit_text(completion_header + original_text, reply_markup=None)
 
     await callback.answer()
     logger.info(f"User {user_id} completed habit {habit_id} on {completion_date}")
@@ -804,7 +806,11 @@ async def habit_skip_callback(callback: CallbackQuery):
         session.add(completion)
         await session.commit()
 
-    await callback.message.edit_text("Окей, пометил как пропуск. Вечером разберём, что помешало.")
+    # Сохраняем исходный контент и добавляем отметку о пропуске
+    original_text = callback.message.html_text or callback.message.text or ""
+    skip_header = f"⏭️ <b>Пропущено {completion_date.strftime('%d.%m.%Y')}</b>\n\n"
+
+    await callback.message.edit_text(skip_header + original_text, reply_markup=None)
 
     await callback.answer()
     logger.info(f"User {user_id} skipped habit {habit_id} on {completion_date}")
