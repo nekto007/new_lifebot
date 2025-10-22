@@ -541,14 +541,25 @@ class ReminderScheduler:
 
                 lesson = grammar_data.get("lesson", {})
                 title = lesson.get("title", "Грамматика")
-                explanation = lesson.get("explanation", "")
-                examples = lesson.get("examples", [])
+                description = lesson.get("description", "")
+
+                # explanation и examples находятся внутри объекта content
+                content_data = lesson.get("content", {})
+                explanation = content_data.get("explanation", "")
+                examples = content_data.get("examples", [])
 
                 if not explanation:
                     return "❌ Не удалось получить урок грамматики."
 
                 # Формируем сообщение с грамматическим уроком
-                content = f"📝 <b>{title}</b>\n\n{explanation}"
+                content = f"📝 <b>{title}</b>\n"
+
+                if description:
+                    content += f"<i>{description}</i>\n\n"
+                else:
+                    content += "\n"
+
+                content += explanation
 
                 if examples:
                     content += "\n\n<b>Примеры:</b>"
