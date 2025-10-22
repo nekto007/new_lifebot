@@ -543,36 +543,29 @@ class ReminderScheduler:
                 logger.info(f"Grammar API response for user {user_id}: {grammar_data}")
 
                 lesson = grammar_data.get("lesson", {})
-                logger.info(f"Lesson object: {lesson}")
-
                 title = lesson.get("title", "Грамматика")
-                description = lesson.get("description", "")
 
-                # explanation и examples находятся внутри объекта content
+                # Контент урока находится в объекте content
                 content_data = lesson.get("content", {})
-                logger.info(f"Content data: {content_data}")
 
-                explanation = content_data.get("explanation", "")
+                # РЕАЛЬНАЯ СТРУКТУРА API:
+                # content.description = полное объяснение (не "explanation"!)
+                # content.examples = примеры
+                full_explanation = content_data.get("description", "")
                 examples = content_data.get("examples", [])
 
                 logger.info(
-                    f"Parsed: title='{title}', explanation_len={len(explanation)}, "
-                    f"examples_count={len(examples)}"
+                    f"Parsed grammar for user {user_id}: title='{title}', "
+                    f"explanation_len={len(full_explanation)}, examples_count={len(examples)}"
                 )
 
-                if not explanation:
-                    logger.error(f"Empty explanation for user {user_id}. Full response: {grammar_data}")
+                if not full_explanation:
+                    logger.error(f"Empty explanation for user {user_id}")
                     return "❌ Не удалось получить урок грамматики."
 
                 # Формируем сообщение с грамматическим уроком
-                content = f"📝 <b>{title}</b>\n"
-
-                if description:
-                    content += f"<i>{description}</i>\n\n"
-                else:
-                    content += "\n"
-
-                content += explanation
+                # Объяснение уже содержит всё форматирование из API
+                content = f"📝 <b>{title}</b>\n\n{full_explanation}"
 
                 if examples:
                     content += "\n\n<b>Примеры:</b>"
