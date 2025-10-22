@@ -47,6 +47,10 @@ class Habits(Base):
     template_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("habit_templates.id"), nullable=True)
     include_content: Mapped[bool] = mapped_column(Boolean, default=False)
     content_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Для language_reading/language_grammar привычек - ссылка на LanguageHabit с выбранной книгой
+    language_habit_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("language_habits.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
