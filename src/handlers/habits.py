@@ -137,9 +137,38 @@ async def process_habit_title(message: Message, state: FSMContext):
     template = await find_habit_template(title)
 
     if template and template.has_content:
-        # Нашли шаблон - спрашиваем про контент
+        # Нашли шаблон - сохраняем в state
         await state.update_data(template_id=template.id, template_name=template.name)
 
+        # Для языковых привычек - сначала проверяем токен
+        if template.category in ("language_reading", "language_grammar"):
+            from db import UserLanguageSettings
+
+            user_id = message.from_user.id
+
+            async with SessionLocal() as session:
+                result = await session.execute(
+                    select(UserLanguageSettings).where(UserLanguageSettings.user_id == user_id)
+                )
+                settings = result.scalar_one_or_none()
+
+                if not settings or not settings.api_token:
+                    # Токена нет - просим ввести
+                    await message.answer(
+                        f"📚 <b>{title}</b>\n\n"
+                        "Для этой привычки нужен API токен от Language Learning сервиса.\n\n"
+                        "Введи свой API токен:"
+                    )
+                    await state.set_state(AddHabitStates.language_token_input)
+                    return
+
+                # Токен есть - переходим к выбору книги (следующий этап)
+                await state.update_data(language_api_token=settings.api_token)
+                # TODO: Этап 3 - здесь будет выбор книги
+                # Пока заглушка - переходим к вопросу про контент
+                pass
+
+        # Обычный flow - спрашиваем про контент
         builder = InlineKeyboardBuilder()
         builder.button(text="Да, присылай задания", callback_data="content_yes")
         builder.button(text="Нет, только напоминание", callback_data="content_no")
@@ -151,8 +180,8 @@ async def process_habit_title(message: Message, state: FSMContext):
             "reading": "Например: 'Прочитай 10 страниц'",
             "meditation": "Например: '5 минут медитации с фокусом на дыхании'",
             "health": "Например: 'Выпей 2 стакана воды'",
-            "language_reading": "Фрагменты книги из Language API (токен: /language_setup)",
-            "language_grammar": "Уроки грамматики из Language API (токен: /language_setup)",
+            "language_reading": "Фрагменты книги из Language API",
+            "language_grammar": "Уроки грамматики из Language API",
         }.get(template.category, "Например: конкретное задание для этой привычки")
 
         await message.answer(
@@ -166,6 +195,62 @@ async def process_habit_title(message: Message, state: FSMContext):
         # Шаблона нет - переходим к расписанию
         await state.update_data(template_id=None, include_content=False)
         await ask_habit_schedule(message, title, state)
+
+
+@router.message(StateFilter(AddHabitStates.language_token_input))
+async def handle_language_token_input(message: Message, state: FSMContext):
+    """Обрабатывает ввод API токена для Language Learning."""
+    from api.language_api import LanguageAPI
+    from db import UserLanguageSettings
+
+    user_id = message.from_user.id
+    token = message.text.strip()
+
+    if not token or len(token) < 10:
+        await message.answer("Токен слишком короткий. Попробуй ещё раз:")
+        return
+
+    # Проверяем токен - пытаемся получить список книг
+    try:
+        api = LanguageAPI(user_token=token)
+        books = await api.get_books()
+        await api.close()
+
+        if not books:
+            await message.answer("Токен валидный, но книг не найдено.\n\n" "Введи другой токен:")
+            return
+
+    except Exception as e:
+        logger.error(f"Failed to validate Language API token: {e}")
+        await message.answer(
+            "❌ Не удалось проверить токен. Возможно, он неправильный.\n\n"
+            "Проверь токен и попробуй ещё раз:"
+        )
+        return
+
+    # Токен валидный - сохраняем
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(UserLanguageSettings).where(UserLanguageSettings.user_id == user_id)
+        )
+        settings = result.scalar_one_or_none()
+
+        if settings:
+            settings.api_token = token
+        else:
+            settings = UserLanguageSettings(user_id=user_id, api_token=token)
+            session.add(settings)
+
+        await session.commit()
+
+    await state.update_data(language_api_token=token)
+    await message.answer("✅ Токен сохранён!")
+
+    # TODO: Этап 3 - переходим к выбору книги
+    # Пока заглушка - переходим к расписанию
+    data = await state.get_data()
+    title = data.get("title", "Привычка")
+    await ask_habit_schedule(message, title, state)
 
 
 async def ask_habit_schedule(message: Message, title: str, state: FSMContext):
