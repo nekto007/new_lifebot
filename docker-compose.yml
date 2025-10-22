@@ -1,6 +1,26 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15
+    container_name: habit_tracker_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: habit_tracker
+      POSTGRES_USER: habit_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-habit_password_change_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - bot_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U habit_user -d habit_tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   bot:
     build: .
     container_name: habit_tracker_bot
@@ -8,13 +28,11 @@ services:
     env_file:
       - .env
     volumes:
-      # Монтируем директорию для базы данных (персистентное хранилище)
-      - ./data:/app/data
       # Опционально: монтируем логи
       - ./logs:/app/logs
     environment:
-      # Путь к базе данных внутри контейнера
-      - DATABASE_URL=sqlite+aiosqlite:///./data/data.db
+      # PostgreSQL connection
+      - DATABASE_URL=postgresql+asyncpg://habit_user:${POSTGRES_PASSWORD:-habit_password_change_me}@postgres:5432/habit_tracker
       # Python unbuffered для логов в реальном времени
       - PYTHONUNBUFFERED=1
       # Language API URL (host.docker.internal для доступа к хосту из Docker)
@@ -22,9 +40,15 @@ services:
     # Для Linux добавляем маппинг host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - bot_network
 
 networks:
   bot_network:
     driver: bridge
+
+volumes:
+  postgres_data:
