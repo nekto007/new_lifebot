@@ -8,11 +8,11 @@ from typing import Any
 
 def load_phrases(lang: str = "ru") -> dict[str, list[str]]:
     """Загружает фразы из JSON файла для указанного языка."""
-    phrases_path = Path(__file__).parent.parent / "locales" / f"phrases_{lang}.json"
+    phrases_path = Path(__file__).parent.parent.parent / "locales" / f"phrases_{lang}.json"
 
     if not phrases_path.exists():
         # Fallback to Russian if language not found
-        phrases_path = Path(__file__).parent.parent / "locales" / "phrases_ru.json"
+        phrases_path = Path(__file__).parent.parent.parent / "locales" / "phrases_ru.json"
 
     with open(phrases_path, encoding="utf-8") as f:
         return json.load(f)

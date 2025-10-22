@@ -314,7 +314,22 @@ class LanguageReminderService:
                 book = fragment_data.get("book", {})
                 chapter = fragment_data.get("chapter", {})
 
+                # Отправляем прогресс-индикатор
+                progress_msg = await self.bot.send_message(
+                    user_id,
+                    f"⏳ <b>Генерирую аудио...</b>\n\n"
+                    f"📖 {book.get('title', 'Книга')}\n"
+                    f"Глава {chapter.get('number', '?')}: {chapter.get('title', 'Глава')}\n\n"
+                    f"<i>Пожалуйста, подождите несколько секунд</i>",
+                )
+
                 audio_buffer = await audio_service.generate_audio(text, language="en")
+
+                # Удаляем прогресс-индикатор после генерации
+                try:
+                    await self.bot.delete_message(user_id, progress_msg.message_id)
+                except Exception:
+                    pass  # Не критично, если не удалось удалить
 
                 if audio_buffer:
                     # Send audio message
@@ -373,8 +388,45 @@ class LanguageReminderService:
                 await session.commit()
                 logger.info(f"Sent audio fragment to user {user_id}")
 
+                # Prefetch следующего фрагмента в фоне для мгновенной доставки завтра
+                try:
+                    await self._prefetch_next_audio(user_id, habit, api, target_length)
+                except Exception as prefetch_error:
+                    logger.warning(f"Prefetch failed for user {user_id}: {prefetch_error}")
+                    # Не критично, не прерываем основной флоу
+
             except Exception as e:
                 logger.error(f"Failed to send audio to user {user_id}: {e}")
+
+    async def _prefetch_next_audio(self, user_id: int, habit, api, target_length: int):
+        """
+        Prefetch следующего фрагмента и генерация аудио в фоне.
+        Аудио будет закешировано и доступно для мгновенной доставки.
+        """
+        try:
+            logger.info(f"Starting prefetch for user {user_id}")
+
+            # Получаем следующий фрагмент (без продвижения прогресса)
+            next_fragment_data = await api.read_next(book_id=habit.current_book_id, length=target_length)
+
+            next_fragment = next_fragment_data.get("fragment", {})
+            next_text = next_fragment.get("text", "").replace("\\n", "\n")
+
+            if not next_text:
+                logger.warning(f"Empty next fragment for user {user_id}, skipping prefetch")
+                return
+
+            # Генерируем аудио (оно будет автоматически закешировано)
+            audio_buffer = await audio_service.generate_audio(next_text, language="en")
+
+            if audio_buffer:
+                logger.info(f"Successfully prefetched and cached audio for user {user_id}")
+            else:
+                logger.warning(f"Prefetch audio generation returned None for user {user_id}")
+
+        except Exception as e:
+            logger.error(f"Error during prefetch for user {user_id}: {e}")
+            raise
 
     async def _send_comprehension_questions(self, user_id: int):
         """Отправляет вопросы на понимание прочитанного (вечер)."""

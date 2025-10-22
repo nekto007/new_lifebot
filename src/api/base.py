@@ -36,11 +36,13 @@ class APIAuthError(APIError):
 class BaseAPIClient:
     """Базовый клиент для работы с внешним API"""
 
-    def __init__(self, base_url: str, headers: dict, timeout: int = 30):
+    def __init__(self, base_url: str, headers: dict, timeout: int = 30, rate_limit_delay: float = 0.1):
         self.base_url = base_url.rstrip("/")
         self.headers = headers
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: aiohttp.ClientSession | None = None
+        self.rate_limit_delay = rate_limit_delay  # Минимальное время между запросами (сек)
+        self._last_request_time: float = 0.0
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Получить или создать HTTP сессию"""
@@ -57,13 +59,27 @@ class BaseAPIClient:
         self, method: str, endpoint: str, params: dict | None = None, json: dict | None = None
     ) -> dict[str, Any]:
         """
-        Базовый метод для HTTP запросов с retry логикой.
+        Базовый метод для HTTP запросов с retry и rate limiting логикой.
 
         Retry стратегия:
         - Максимум 3 попытки
         - Exponential backoff: 1s, 2s, 4s
         - Retry только при сетевых ошибках (не при 401/403)
+
+        Rate limiting:
+        - Минимальная задержка между запросами (по умолчанию 0.1 сек)
         """
+        import asyncio
+        import time
+
+        # Rate limiting: проверяем время с последнего запроса
+        if self._last_request_time > 0:
+            elapsed = time.time() - self._last_request_time
+            if elapsed < self.rate_limit_delay:
+                delay = self.rate_limit_delay - elapsed
+                logger.debug(f"Rate limiting: waiting {delay:.2f}s before next request")
+                await asyncio.sleep(delay)
+
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
 
         # Определяем retry стратегию
@@ -99,6 +115,9 @@ class BaseAPIClient:
                             error_msg = data.get("error", "Server error")
                             logger.warning(f"Server error (will retry): {response.status} - {error_msg}")
                             raise aiohttp.ClientError(f"Server error: {error_msg}")
+
+                        # Обновляем время последнего запроса для rate limiting
+                        self._last_request_time = time.time()
 
                         return data
 

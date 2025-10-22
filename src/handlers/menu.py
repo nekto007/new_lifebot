@@ -41,11 +41,14 @@ async def cmd_menu(message: Message):
     builder.button(text="Журнал 📖", callback_data="show_journal")
     builder.button(text="Экспорт 💾", callback_data="show_export")
 
-    # Шестой ряд - настройки и помощь
+    # Шестой ряд - Language Learning
+    builder.button(text="Изучение языков 🎧", callback_data="show_language")
+
+    # Седьмой ряд - настройки и помощь
     builder.button(text="Настройки ⚙️", callback_data="show_settings")
     builder.button(text="Помощь ❓", callback_data="show_help")
 
-    builder.adjust(2, 2, 2, 2, 2, 2)
+    builder.adjust(2, 2, 2, 2, 2, 1, 2)
 
     await message.answer("Что делаем?", reply_markup=builder.as_markup())
     logger.info(f"User {message.from_user.id} opened /menu")
@@ -431,11 +434,14 @@ async def menu_back(callback: CallbackQuery):
     builder.button(text="Журнал 📖", callback_data="show_journal")
     builder.button(text="Экспорт 💾", callback_data="show_export")
 
-    # Шестой ряд - настройки и помощь
+    # Шестой ряд - Language Learning
+    builder.button(text="Изучение языков 🎧", callback_data="show_language")
+
+    # Седьмой ряд - настройки и помощь
     builder.button(text="Настройки ⚙️", callback_data="show_settings")
     builder.button(text="Помощь ❓", callback_data="show_help")
 
-    builder.adjust(2, 2, 2, 2, 2, 2)
+    builder.adjust(2, 2, 2, 2, 2, 1, 2)
 
     await callback.message.edit_text("Что делаем?", reply_markup=builder.as_markup())
     await callback.answer()
@@ -479,6 +485,52 @@ async def menu_show_export(callback: CallbackQuery):
     )
     await callback.answer()
     logger.info(f"User {callback.from_user.id} opened export menu")
+
+
+@router.callback_query(F.data == "show_language")
+async def menu_show_language(callback: CallbackQuery):
+    """Показывает меню Language Learning."""
+    from db import UserLanguageSettings
+
+    user_id = callback.from_user.id
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(UserLanguageSettings).where(UserLanguageSettings.user_id == user_id)
+        )
+        settings = result.scalar_one_or_none()
+
+        if not settings or not settings.api_token:
+            # API не настроен
+            builder = InlineKeyboardBuilder()
+            builder.button(text="Настроить API", callback_data="lang_setup_start")
+            builder.button(text="« Назад в меню", callback_data="back_to_menu")
+            builder.adjust(1)
+
+            await callback.message.edit_text(
+                "🎧 <b>Изучение языков</b>\n\n"
+                "Для использования функций изучения языков нужен API токен.\n\n"
+                "Настрой API токен, чтобы начать:",
+                reply_markup=builder.as_markup(),
+            )
+        else:
+            # API настроен
+            builder = InlineKeyboardBuilder()
+            builder.button(text="Выбрать книгу 📚", callback_data="lang_choose_book")
+            builder.button(text="Читать 📖", callback_data="lang_read")
+            builder.button(text="Грамматика 📝", callback_data="lang_grammar")
+            builder.button(text="Настроить расписание 🔔", callback_data="lang_schedule")
+            builder.button(text="Статус API ✅", callback_data="lang_status")
+            builder.button(text="« Назад в меню", callback_data="back_to_menu")
+            builder.adjust(2, 2, 1, 1, 1)
+
+            await callback.message.edit_text(
+                "🎧 <b>Изучение языков</b>\n\n" "Что хочешь сделать?",
+                reply_markup=builder.as_markup(),
+            )
+
+    await callback.answer()
+    logger.info(f"User {callback.from_user.id} opened language menu")
 
 
 @router.callback_query(F.data == "show_help")
