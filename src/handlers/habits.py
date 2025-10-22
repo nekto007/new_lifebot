@@ -27,6 +27,9 @@ COMPLETION_EMOJIS = ["🔥", "💪", "⚡", "✨", "🌟", "🎯", "👏", "🚀
 class AddHabitStates(StatesGroup):
     title = State()
     content_choice = State()  # Спрашиваем про контент (для известных привычек)
+    # Для языковых привычек (language_reading, language_grammar)
+    language_token_input = State()  # Ввод API токена, если его нет
+    language_book_selection = State()  # Выбор книги из списка
     schedule_type = State()
     weekdays = State()  # Только для weekly
     time = State()
