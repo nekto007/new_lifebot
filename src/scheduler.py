@@ -539,16 +539,29 @@ class ReminderScheduler:
                 # Получаем последний урок грамматики
                 grammar_data = await api.get_latest_grammar()
 
+                # DEBUG: Логируем полный ответ от API
+                logger.info(f"Grammar API response for user {user_id}: {grammar_data}")
+
                 lesson = grammar_data.get("lesson", {})
+                logger.info(f"Lesson object: {lesson}")
+
                 title = lesson.get("title", "Грамматика")
                 description = lesson.get("description", "")
 
                 # explanation и examples находятся внутри объекта content
                 content_data = lesson.get("content", {})
+                logger.info(f"Content data: {content_data}")
+
                 explanation = content_data.get("explanation", "")
                 examples = content_data.get("examples", [])
 
+                logger.info(
+                    f"Parsed: title='{title}', explanation_len={len(explanation)}, "
+                    f"examples_count={len(examples)}"
+                )
+
                 if not explanation:
+                    logger.error(f"Empty explanation for user {user_id}. Full response: {grammar_data}")
                     return "❌ Не удалось получить урок грамматики."
 
                 # Формируем сообщение с грамматическим уроком
