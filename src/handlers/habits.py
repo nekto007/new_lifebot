@@ -96,27 +96,190 @@ async def cmd_listhabits(message: Message):
 
 @router.message(Command("addhabit"))
 async def cmd_addhabit(message: Message, state: FSMContext):
-    """Команда /addhabit - начинает мастер создания привычки."""
+    """Команда /addhabit - показывает список шаблонов привычек."""
     await state.clear()
-    await message.answer(
-        "Название привычки? (кратко)\n\n" "Например: <i>Чтение 10м</i>, <i>Зарядка</i>, <i>Медитация</i>"
-    )
-    await state.set_state(AddHabitStates.title)
     await state.update_data(user_id=message.from_user.id)
-    logger.info(f"User {message.from_user.id} started /addhabit wizard")
+
+    # Получаем все шаблоны из БД
+    from db import HabitTemplate
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(HabitTemplate).order_by(HabitTemplate.category, HabitTemplate.name)
+        )
+        templates = result.scalars().all()
+
+    if not templates:
+        # Если шаблонов нет - переходим к вводу названия
+        await message.answer(
+            "Название привычки? (кратко)\n\n" "Например: <i>Чтение 10м</i>, <i>Зарядка</i>, <i>Медитация</i>"
+        )
+        await state.set_state(AddHabitStates.title)
+        logger.info(f"User {message.from_user.id} started /addhabit wizard - no templates")
+        return
+
+    # Показываем список шаблонов кнопками
+    builder = InlineKeyboardBuilder()
+
+    for template in templates:
+        emoji = "📝" if template.has_content else "⭕"
+        builder.button(text=f"{emoji} {template.name}", callback_data=f"H_TMPL:{template.id}")
+
+    # Кнопка для создания своей привычки
+    builder.button(text="✏️ Своя привычка", callback_data="H_CUSTOM")
+
+    # По 2 кнопки в ряд + последняя кнопка на отдельной строке
+    builder.adjust(2)
+
+    await message.answer(
+        "Выбери привычку из списка или создай свою:",
+        reply_markup=builder.as_markup(),
+    )
+    logger.info(f"User {message.from_user.id} started /addhabit wizard - showing {len(templates)} templates")
 
 
 @router.callback_query(F.data == "add_habit_start")
 async def start_add_habit_from_callback(callback: CallbackQuery, state: FSMContext):
     """Начинает мастер создания привычки из кнопки."""
     await state.clear()
+    await state.update_data(user_id=callback.from_user.id)
+
+    # Получаем все шаблоны из БД
+    from db import HabitTemplate
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(HabitTemplate).order_by(HabitTemplate.category, HabitTemplate.name)
+        )
+        templates = result.scalars().all()
+
+    if not templates:
+        # Если шаблонов нет - переходим к вводу названия
+        await callback.message.edit_text(
+            "Название привычки? (кратко)\n\n" "Например: <i>Чтение 10м</i>, <i>Зарядка</i>, <i>Медитация</i>"
+        )
+        await state.set_state(AddHabitStates.title)
+        await callback.answer()
+        logger.info(f"User {callback.from_user.id} started /addhabit wizard from button - no templates")
+        return
+
+    # Показываем список шаблонов кнопками
+    builder = InlineKeyboardBuilder()
+
+    for template in templates:
+        emoji = "📝" if template.has_content else "⭕"
+        builder.button(text=f"{emoji} {template.name}", callback_data=f"H_TMPL:{template.id}")
+
+    # Кнопка для создания своей привычки
+    builder.button(text="✏️ Своя привычка", callback_data="H_CUSTOM")
+
+    # По 2 кнопки в ряд
+    builder.adjust(2)
+
+    await callback.message.edit_text(
+        "Выбери привычку из списка или создай свою:",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
+    logger.info(
+        f"User {callback.from_user.id} started /addhabit wizard from button - "
+        f"showing {len(templates)} templates"
+    )
+
+
+@router.callback_query(F.data == "H_CUSTOM")
+async def habit_custom_callback(callback: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки 'Своя привычка' - переходит к вводу названия."""
     await callback.message.edit_text(
         "Название привычки? (кратко)\n\n" "Например: <i>Чтение 10м</i>, <i>Зарядка</i>, <i>Медитация</i>"
     )
     await state.set_state(AddHabitStates.title)
-    await state.update_data(user_id=callback.from_user.id)
     await callback.answer()
-    logger.info(f"User {callback.from_user.id} started /addhabit wizard from button")
+    logger.info(f"User {callback.from_user.id} chose custom habit")
+
+
+@router.callback_query(F.data.startswith("H_TMPL:"))
+async def habit_template_callback(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора шаблона привычки."""
+    user_id = callback.from_user.id
+
+    # Парсим callback_data: H_TMPL:{template_id}
+    parts = callback.data.split(":")
+    if len(parts) != 2:
+        await callback.answer("Ошибка формата данных", show_alert=True)
+        return
+
+    template_id = int(parts[1])
+
+    # Загружаем шаблон из БД
+    from db import HabitTemplate
+
+    async with SessionLocal() as session:
+        template = await session.get(HabitTemplate, template_id)
+        if not template:
+            await callback.answer("Шаблон не найден", show_alert=True)
+            return
+
+    # Сохраняем данные шаблона в state
+    await state.update_data(title=template.name, template_id=template.id, template_name=template.name)
+
+    # Для языковых привычек - сначала проверяем токен
+    if template.category in ("language_reading", "language_grammar"):
+        from db import UserLanguageSettings
+
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(UserLanguageSettings).where(UserLanguageSettings.user_id == user_id)
+            )
+            settings = result.scalar_one_or_none()
+
+        if not settings or not settings.api_token:
+            # Токена нет - просим ввести
+            await callback.message.edit_text(
+                "Для работы с языковыми привычками нужен API токен.\n\n" "Отправь токен от Language API:"
+            )
+            await state.set_state(AddHabitStates.language_token_input)
+            await callback.answer()
+            logger.info(f"User {user_id} selected template {template.name} - requesting token")
+            return
+
+        # Токен есть - сохраняем в state
+        await state.update_data(language_api_token=settings.api_token)
+
+        # Для грамматики НЕ нужна книга - сразу к расписанию
+        if template.category == "language_grammar":
+            await state.update_data(include_content=True)
+            await ask_habit_schedule(callback.message, template.name, state)
+            await callback.answer()
+            logger.info(f"User {user_id} selected grammar template {template.name}")
+            return
+
+        # Для чтения - переходим к выбору книги
+        await ask_language_book_selection(callback.message, state, settings.api_token)
+        await callback.answer()
+        logger.info(f"User {user_id} selected reading template {template.name}")
+        return
+
+    # Для обычных шаблонов с контентом - спрашиваем про генерацию
+    if template.has_content:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="Да, генерировать", callback_data="H_CONTENT_YES")
+        builder.button(text="Нет, без контента", callback_data="H_CONTENT_NO")
+        builder.adjust(1)
+
+        await callback.message.edit_text(
+            f"Привычка: <b>{template.name}</b>\n\n" f"Генерировать задания для этой привычки через AI?",
+            reply_markup=builder.as_markup(),
+        )
+        await state.set_state(AddHabitStates.content_choice)
+        await callback.answer()
+        logger.info(f"User {user_id} selected template {template.name} - asking about content")
+        return
+
+    # Для шаблонов без контента - сразу к расписанию
+    await ask_habit_schedule(callback.message, template.name, state)
+    await callback.answer()
+    logger.info(f"User {user_id} selected template {template.name}")
 
 
 @router.message(StateFilter(AddHabitStates.title))
